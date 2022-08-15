@@ -7,6 +7,9 @@
 package updater
 
 import (
+	"fmt"
+	"net"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -14,11 +17,33 @@ import (
 
 // NodeRoute stores node internal IP and the pod CIDRs
 type NodeRoute struct {
-	InternalIP string
+	InstanceID string
 	PodCIDR    string
 }
 
-type NodeRoutesUpdater func(routes []NodeRoute)
+func NewNodeRoute(instanceID, podCIDR string) *NodeRoute {
+	if instanceID == "" || podCIDR == "" {
+		return nil
+	}
+
+	nodeRoute := &NodeRoute{
+		InstanceID: instanceID,
+		PodCIDR:    podCIDR,
+	}
+	if _, _, err := net.ParseCIDR(podCIDR); err != nil {
+		return nil
+	}
+	return nodeRoute
+}
+
+func (r NodeRoute) Equals(other *NodeRoute) bool {
+	if other == nil {
+		return false
+	}
+	return r == *other
+}
+
+type NodeRoutesUpdater func(routes []NodeRoute) error
 
 type NamedNodeRoutes struct {
 	sync.Mutex
@@ -42,7 +67,7 @@ func (r *NamedNodeRoutes) AddNodeRoute(node *corev1.Node) (*NodeRoute, bool) {
 	defer r.Unlock()
 
 	changed := false
-	if r.routes[node.Name] != *route {
+	if !r.routes[node.Name].Equals(route) {
 		r.routes[node.Name] = *route
 		changed = true
 		r.changed = true
@@ -77,23 +102,31 @@ func (r *NamedNodeRoutes) GetRoutesIfChanged() []NodeRoute {
 	return routes
 }
 
+func (r *NamedNodeRoutes) SetChanged() {
+	r.Lock()
+	defer r.Unlock()
+	r.changed = true
+}
+
 // extractNodeRoute extracts node internal IP and the pod CIDRs
 func extractNodeRoute(node *corev1.Node) *NodeRoute {
 	if node == nil {
 		return nil
 	}
-	internalIP := ""
-	for _, address := range node.Status.Addresses {
-		if address.Type == corev1.NodeInternalIP {
-			internalIP = address.Address
-			break
-		}
+	_, instanceID, _ := decodeRegionAndInstanceID(node.Spec.ProviderID)
+	return NewNodeRoute(instanceID, node.Spec.PodCIDR)
+}
+
+// decodeRegionAndInstanceID extracts region and instanceID
+func decodeRegionAndInstanceID(providerID string) (string, string, error) {
+	if !strings.HasPrefix(providerID, "aws:") {
+		err := fmt.Errorf("unknown scheme, expected 'aws': %s", providerID)
+		return "", "", err
 	}
-	if internalIP == "" || node.Spec.PodCIDR == "" {
-		return nil
+	splitProviderID := strings.Split(providerID, "/")
+	if len(splitProviderID) < 2 {
+		err := fmt.Errorf("Unable to decode provider-ID")
+		return "", "", err
 	}
-	return &NodeRoute{
-		InternalIP: internalIP,
-		PodCIDR:    node.Spec.PodCIDR,
-	}
+	return splitProviderID[len(splitProviderID)-2], splitProviderID[len(splitProviderID)-1], nil
 }

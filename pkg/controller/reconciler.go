@@ -50,7 +50,11 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 					continue
 				}
 				if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
-					updateFunc(routes)
+					if err := updateFunc(routes); err != nil {
+						r.log.Error(err, "updating routes failed")
+						// mark cached routes as changed to retry later
+						r.nodeRoutes.SetChanged()
+					}
 				}
 			}
 		}

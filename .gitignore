@@ -6,6 +6,7 @@
 /local
 *.test
 /aws-custom-route-controller
+/hack/bin/*
 
 *.coverprofile
 /cover.out

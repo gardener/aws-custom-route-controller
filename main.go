@@ -4,7 +4,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -44,11 +43,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	updater := func(routes []updater.NodeRoute) {
-		fmt.Printf("routes: %#v\n", routes)
+	var ec2itf updater.EC2Routes
+	var clusterName, podNetworkCIDR string
+	customRoutes, err := updater.NewCustomRoutes(log.WithName("updater"), ec2itf, clusterName, podNetworkCIDR)
+	if err != nil {
+		log.Error(err, "could not create AWS custom routes updater")
+		os.Exit(2)
 	}
 	ctx := signals.SetupSignalHandler()
-	reconciler.StartUpdater(ctx, updater, 5*time.Second)
+	reconciler.StartUpdater(ctx, customRoutes.Update, 5*time.Second)
 	if err := mgr.Start(ctx); err != nil {
 		log.Error(err, "could not start manager")
 		os.Exit(1)

@@ -12,6 +12,10 @@ IMAGE_TAG             := $(VERSION)
 EFFECTIVE_VERSION     := $(VERSION)-$(shell git rev-parse HEAD)
 GOARCH                := amd64
 
+TOOLS_DIR                  := $(REPO_ROOT)/hack
+TOOLS_BIN_DIR              := $(TOOLS_DIR)/bin
+MOCKGEN                    := $(TOOLS_BIN_DIR)/mockgen
+
 .PHONY: revendor
 revendor:
 	@env GO111MODULE=on go mod vendor
@@ -41,6 +45,13 @@ fmt:
 .PHONY: docker-images
 docker-images:
 	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f Dockerfile .
+
+$(MOCKGEN): go.mod
+	go build -o $(MOCKGEN) github.com/golang/mock/mockgen
+
+.PHONY: generate
+generate: $(MOCKGEN)
+	@go generate ./pkg/...
 
 # Run tests
 .PHONY: test
