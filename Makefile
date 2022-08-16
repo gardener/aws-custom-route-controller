@@ -37,14 +37,21 @@ release:
         -ldflags "-w -X 'main.Version=$(EFFECTIVE_VERSION)' -X 'main.ImageTag=$(IMAGE_TAG)'"\
 		main.go
 
+.PHONY: check
+check: $(GOIMPORTS)
+	go vet ./...
+
 # Run go fmt against code
-.PHONY: fmt
-fmt:
+.PHONY: format
+format:
 	@env GO111MODULE=on go fmt ./...
 
 .PHONY: docker-images
 docker-images:
 	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f Dockerfile .
+
+$(GOIMPORTS): go.mod
+	go build -o $(GOIMPORTS) golang.org/x/tools/cmd/goimports
 
 $(MOCKGEN): go.mod
 	go build -o $(MOCKGEN) github.com/golang/mock/mockgen
@@ -62,3 +69,6 @@ test:
 update-dependencies:
 	@env GO111MODULE=on go get -u
 	@make revendor
+
+.PHONY: verify
+verify: check format test
