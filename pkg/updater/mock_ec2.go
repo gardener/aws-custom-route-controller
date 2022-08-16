@@ -65,10 +65,10 @@ func (mr *MockEC2RoutesMockRecorder) DeleteRoute(arg0 interface{}) *gomock.Call 
 }
 
 // DescribeRouteTables mocks base method.
-func (m *MockEC2Routes) DescribeRouteTables(arg0 *ec2.DescribeRouteTablesInput) ([]*ec2.RouteTable, error) {
+func (m *MockEC2Routes) DescribeRouteTables(arg0 *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DescribeRouteTables", arg0)
-	ret0, _ := ret[0].([]*ec2.RouteTable)
+	ret0, _ := ret[0].(*ec2.DescribeRouteTablesOutput)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

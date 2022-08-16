@@ -4,22 +4,38 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	"github.com/gardener/aws-custom-route-controller/pkg/controller"
 	"github.com/gardener/aws-custom-route-controller/pkg/updater"
+	"github.com/go-logr/logr"
+	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client/config"
-
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 )
 
+// Version is injected by build
 var Version string
+
+var (
+	podNetworkCidr    = pflag.String("pod-network-cidr", "", "CIDR for pod network")
+	clusterName       = pflag.String("cluster-name", "", "cluster name used for AWS tags")
+	secretName        = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
+	namespace         = pflag.String("namespace", "", "namespace of secret containing the AWS credentials on control plane")
+	controlKubeconfig = pflag.String("control-kubeconfig", updater.InClusterConfig, fmt.Sprintf("path of control plane kubeconfig or '%s' for in-cluster config", updater.InClusterConfig))
+	targetKubeconfig  = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
+	region            = pflag.String("region", "", "AWS region")
+	tickPeriod        = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
+	syncPeriod        = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
+	maxDelay          = pflag.Duration("max-delay-on-failure", 5*time.Minute, "maximum delay if communication with AWS fails")
+)
 
 func main() {
 	logf.SetLogger(zap.New())
@@ -27,7 +43,20 @@ func main() {
 	var log = logf.Log.WithName("aws-custom-route-controller")
 	log.Info("version", "version", Version)
 
-	mgr, err := manager.New(config.GetConfigOrDie(), manager.Options{})
+	pflag.Parse()
+	checkRequiredFlag(log, "namespace", *namespace)
+	checkRequiredFlag(log, "secret-name", *secretName)
+	checkRequiredFlag(log, "region", *region)
+	checkRequiredFlag(log, "cluster-name", *clusterName)
+	checkRequiredFlag(log, "pod-network-cidr", *podNetworkCidr)
+	checkRequiredFlag(log, "target-kubeconfig", *targetKubeconfig)
+
+	targetConfig, err := clientcmd.BuildConfigFromFlags("", *targetKubeconfig)
+	if err != nil {
+		log.Error(err, "could not use target kubeconfig", "target-kubeconfig", *targetKubeconfig)
+		os.Exit(1)
+	}
+	mgr, err := manager.New(targetConfig, manager.Options{})
 	if err != nil {
 		log.Error(err, "could not create manager")
 		os.Exit(1)
@@ -43,17 +72,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	var ec2itf updater.EC2Routes
-	var clusterName, podNetworkCIDR string
-	customRoutes, err := updater.NewCustomRoutes(log.WithName("updater"), ec2itf, clusterName, podNetworkCIDR)
+	credentials, err := updater.LoadCredentials(*controlKubeconfig, *namespace, *secretName)
+	if err != nil {
+		log.Error(err, "could not load AWS credentials", "namespace", *namespace, "secretName", *secretName)
+		os.Exit(1)
+	}
+	ec2Routes, err := updater.NewAWSEC2Routes(credentials, *region)
+	if err != nil {
+		log.Error(err, "could not create AWS EC2 interface")
+		os.Exit(1)
+	}
+	customRoutes, err := updater.NewCustomRoutes(log.WithName("updater"), ec2Routes, *clusterName, *podNetworkCidr)
 	if err != nil {
 		log.Error(err, "could not create AWS custom routes updater")
-		os.Exit(2)
+		os.Exit(1)
 	}
 	ctx := signals.SetupSignalHandler()
-	reconciler.StartUpdater(ctx, customRoutes.Update, 5*time.Second)
+	reconciler.StartUpdater(ctx, customRoutes.Update, *tickPeriod, *syncPeriod, *maxDelay)
 	if err := mgr.Start(ctx); err != nil {
 		log.Error(err, "could not start manager")
+		os.Exit(1)
+	}
+}
+
+func checkRequiredFlag(log logr.Logger, name, value string) {
+	if value == "" {
+		log.Info(fmt.Sprintf("'--%s' is required", name))
+		pflag.Usage()
 		os.Exit(1)
 	}
 }

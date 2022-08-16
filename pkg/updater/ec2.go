@@ -8,6 +8,8 @@ package updater
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
@@ -25,9 +27,24 @@ const TagNameKubernetesClusterLegacy = "KubernetesCluster"
 // EC2Routes is an abstraction over AWS EC2, to allow mocking/other implementations
 //go:generate mockgen -destination=mock_ec2.go -package=updater github.com/gardener/aws-custom-route-controller/pkg/updater EC2Routes
 type EC2Routes interface {
-	DescribeRouteTables(request *ec2.DescribeRouteTablesInput) ([]*ec2.RouteTable, error)
+	DescribeRouteTables(request *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error)
 	CreateRoute(request *ec2.CreateRouteInput) (*ec2.CreateRouteOutput, error)
 	DeleteRoute(request *ec2.DeleteRouteInput) (*ec2.DeleteRouteOutput, error)
+}
+
+func NewAWSEC2Routes(creds *Credentials, region string) (EC2Routes, error) {
+	var (
+		awsConfig = &aws.Config{
+			Credentials: credentials.NewStaticCredentials(creds.AccessKeyID, creds.SecretAccessKey, ""),
+		}
+		config = &aws.Config{Region: aws.String(region)}
+	)
+
+	s, err := session.NewSession(awsConfig)
+	if err != nil {
+		return nil, err
+	}
+	return ec2.New(s, config), nil
 }
 
 func ClusterTagKey(clusterID string) string {

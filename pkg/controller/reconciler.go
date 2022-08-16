@@ -29,32 +29,57 @@ type NodeReconciler struct {
 	nodeRoutes         *updater.NamedNodeRoutes
 }
 
+// NewNodeReconciler creates a NodeReconciler instance
 func NewNodeReconciler() *NodeReconciler {
 	return &NodeReconciler{
 		nodeRoutes: updater.NewNamedNodeRoutes(),
 	}
 }
 
-func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.NodeRoutesUpdater, tickPeriod time.Duration) {
+// StartUpdater starts background go routine to check for changed routes calculated by watching nodes
+func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.NodeRoutesUpdater,
+	tickPeriod, syncPeriod, maxDelayOnFailure time.Duration) {
 	ticker := time.NewTicker(tickPeriod)
+	log := r.log.WithName("ticker")
 
 	go func() {
+		var lastUpdate time.Time
+		var lastFailure time.Time
+		var delay time.Duration
 		for {
 			select {
 			case <-ticker.C:
 				if ctx.Err() != nil {
-					r.log.Info("updater loop cancelled")
+					log.Info("updater loop cancelled")
 					return
 				}
 				if !r.initialiseFinished.Load() {
 					continue
 				}
+				if lastUpdate.Add(syncPeriod).Before(time.Now()) {
+					log.Info("sync")
+					r.nodeRoutes.SetChanged()
+				}
+				if delay > 0 && lastFailure.Add(delay).Before(time.Now()) {
+					log.Info("retry")
+					r.nodeRoutes.SetChanged()
+				}
 				if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
 					if err := updateFunc(routes); err != nil {
-						r.log.Error(err, "updating routes failed")
-						// mark cached routes as changed to retry later
-						r.nodeRoutes.SetChanged()
+						log.Error(err, "updating routes failed")
+						lastFailure = time.Now()
+						if delay == 0 {
+							delay = tickPeriod
+						} else {
+							delay = 4 * delay / 3
+							if delay > maxDelayOnFailure {
+								delay = maxDelayOnFailure
+							}
+						}
+					} else {
+						delay = 0
 					}
+					lastUpdate = time.Now()
 				}
 			}
 		}
@@ -108,7 +133,7 @@ func (r *NodeReconciler) InjectLogger(l logr.Logger) error {
 
 func (r *NodeReconciler) addNodeRoute(node *corev1.Node) {
 	if route, changed := r.nodeRoutes.AddNodeRoute(node); changed {
-		r.log.Info("added node route", "node", node.Name, "podCIDR", route.PodCIDR, "internalIP", route.InternalIP)
+		r.log.Info("added node route", "node", node.Name, "podCIDR", route.PodCIDR, "instanceID", route.InstanceID)
 	}
 }
 

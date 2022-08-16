@@ -119,13 +119,13 @@ var _ = Describe("CustomRoutes", func() {
 	})
 
 	It("should report error if no route tables found", func() {
-		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return([]*ec2.RouteTable{}, nil)
+		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{}, nil)
 		err := customRoutes.Update(nil)
 		Expect(err).NotTo(BeNil())
 	})
 
 	It("should update route tables", func() {
-		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return(tables, nil)
+		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tables}, nil)
 		ec2RoutesMock.EXPECT().DeleteRoute(&ec2.DeleteRouteInput{
 			DestinationCidrBlock: routeNode2.DestinationCidrBlock,
 			RouteTableId:         rt1,
@@ -150,7 +150,7 @@ var _ = Describe("CustomRoutes", func() {
 	})
 
 	It("should update nothing if unchanged", func() {
-		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return(tables2, nil)
+		ec2RoutesMock.EXPECT().DescribeRouteTables(&ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tables2}, nil)
 		err := customRoutes.Update(nodeRoutes)
 		Expect(err).To(BeNil())
 	})

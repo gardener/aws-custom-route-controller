@@ -51,7 +51,7 @@ func (r *CustomRoutes) findRouteTables() ([]*ec2.RouteTable, error) {
 		return nil, err
 	}
 
-	for _, table := range response {
+	for _, table := range response.RouteTables {
 		if hasClusterTag(r.clusterName, table.Tags) {
 			tables = append(tables, table)
 		}
@@ -77,7 +77,7 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 				RouteTableId:         table.RouteTableId,
 				DestinationCidrBlock: aws.String(del.destinationCidrBlock),
 			}
-			_, err := r.ec2.DeleteRoute(req)
+			_, err = r.ec2.DeleteRoute(req)
 			if err != nil {
 				return fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err)
 			}
@@ -89,7 +89,7 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 				DestinationCidrBlock: aws.String(create.destinationCidrBlock),
 				InstanceId:           aws.String(create.instanceId),
 			}
-			_, err := r.ec2.CreateRoute(req)
+			_, err = r.ec2.CreateRoute(req)
 			if err != nil {
 				return fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err)
 			}
