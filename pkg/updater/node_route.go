@@ -75,17 +75,17 @@ func (r *NamedNodeRoutes) AddNodeRoute(node *corev1.Node) (*NodeRoute, bool) {
 	return route, changed
 }
 
-func (r *NamedNodeRoutes) RemoveNodeRoute(nodeName string) bool {
+func (r *NamedNodeRoutes) RemoveNodeRoute(nodeName string) *NodeRoute {
 	r.Lock()
 	defer r.Unlock()
 
-	if _, ok := r.routes[nodeName]; ok {
+	if nr, ok := r.routes[nodeName]; ok {
 		delete(r.routes, nodeName)
 		r.changed = true
-		return true
+		return &nr
 	}
 
-	return false
+	return nil
 }
 
 func (r *NamedNodeRoutes) GetRoutesIfChanged() []NodeRoute {

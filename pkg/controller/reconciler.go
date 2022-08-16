@@ -138,7 +138,7 @@ func (r *NodeReconciler) addNodeRoute(node *corev1.Node) {
 }
 
 func (r *NodeReconciler) removeNodeRoute(nodeName string) {
-	if r.nodeRoutes.RemoveNodeRoute(nodeName) {
-		r.log.Info("removed node route", "node", nodeName)
+	if route := r.nodeRoutes.RemoveNodeRoute(nodeName); route != nil {
+		r.log.Info("removed node route", "node", nodeName, "podCIDR", route.PodCIDR, "instanceID", route.InstanceID)
 	}
 }

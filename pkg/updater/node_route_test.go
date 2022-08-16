@@ -74,9 +74,11 @@ var _ = Describe("NamedNodeRoutes", func() {
 		Expect(changed1c).To(BeFalse())
 
 		changed3b := routes.RemoveNodeRoute(node3.Name)
-		Expect(changed3b).To(BeFalse())
+		Expect(changed3b).To(BeNil())
 		changed2b := routes.RemoveNodeRoute(node2.Name)
-		Expect(changed2b).To(BeTrue())
+		Expect(changed2b).NotTo(BeNil())
+		changed2c := routes.RemoveNodeRoute(node2.Name)
+		Expect(changed2c).To(BeNil())
 
 		routes2 := routes.GetRoutesIfChanged()
 		Expect(len(routes2)).To(Equal(1))
