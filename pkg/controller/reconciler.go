@@ -8,6 +8,8 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gardener/aws-custom-route-controller/pkg/updater"
@@ -27,6 +29,8 @@ type NodeReconciler struct {
 	initialiseStarted  atomic.Bool
 	initialiseFinished atomic.Bool
 	nodeRoutes         *updater.NamedNodeRoutes
+	lastTick           atomic.Time
+	tickPeriod         time.Duration
 }
 
 // NewNodeReconciler creates a NodeReconciler instance
@@ -39,6 +43,7 @@ func NewNodeReconciler() *NodeReconciler {
 // StartUpdater starts background go routine to check for changed routes calculated by watching nodes
 func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.NodeRoutesUpdater,
 	tickPeriod, syncPeriod, maxDelayOnFailure time.Duration) {
+	r.tickPeriod = tickPeriod
 	ticker := time.NewTicker(tickPeriod)
 	log := r.log.WithName("ticker")
 
@@ -81,6 +86,7 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 					}
 					lastUpdate = time.Now()
 				}
+				r.lastTick.Store(time.Now())
 			}
 		}
 	}()
@@ -105,6 +111,20 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	r.addNodeRoute(node)
 
 	return reconcile.Result{}, nil
+}
+
+func (r *NodeReconciler) ReadyChecker(_ *http.Request) error {
+	if !r.initialiseFinished.Load() {
+		return fmt.Errorf("not initialised")
+	}
+	return nil
+}
+
+func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
+	if r.lastTick.Load().Add(3 * r.tickPeriod).Before(time.Now()) {
+		return fmt.Errorf("missing tick")
+	}
+	return nil
 }
 
 func (r *NodeReconciler) initialise(ctx context.Context) {

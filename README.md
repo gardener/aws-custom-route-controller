@@ -16,7 +16,9 @@ The `aws-custom-route-controller` needs to be started with several flags. All fl
 Usage of ./aws-custom-route-controller:
       --cluster-name string             cluster name used for AWS tags
       --control-kubeconfig string       path of control plane kubeconfig or 'inClusterConfig' for in-cluster config (default "inClusterConfig")
+      --health-probe-port int           port for health probes (default 8081)
       --max-delay-on-failure duration   maximum delay if communication with AWS fails (default 5m0s)
+      --metrics-port int                port for metrics (default 8080)
       --namespace string                namespace of secret containing the AWS credentials on control plane
       --pod-network-cidr string         CIDR for pod network
       --region string                   AWS region

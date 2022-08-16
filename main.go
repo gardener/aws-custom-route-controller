@@ -25,16 +25,18 @@ import (
 var Version string
 
 var (
-	podNetworkCidr    = pflag.String("pod-network-cidr", "", "CIDR for pod network")
 	clusterName       = pflag.String("cluster-name", "", "cluster name used for AWS tags")
-	secretName        = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
-	namespace         = pflag.String("namespace", "", "namespace of secret containing the AWS credentials on control plane")
 	controlKubeconfig = pflag.String("control-kubeconfig", updater.InClusterConfig, fmt.Sprintf("path of control plane kubeconfig or '%s' for in-cluster config", updater.InClusterConfig))
-	targetKubeconfig  = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
-	region            = pflag.String("region", "", "AWS region")
-	tickPeriod        = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
-	syncPeriod        = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
+	healthProbePort   = pflag.Int("health-probe-port", 8081, "port for health probes")
 	maxDelay          = pflag.Duration("max-delay-on-failure", 5*time.Minute, "maximum delay if communication with AWS fails")
+	metricsPort       = pflag.Int("metrics-port", 8080, "port for metrics")
+	namespace         = pflag.String("namespace", "", "namespace of secret containing the AWS credentials on control plane")
+	podNetworkCidr    = pflag.String("pod-network-cidr", "", "CIDR for pod network")
+	region            = pflag.String("region", "", "AWS region")
+	secretName        = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
+	syncPeriod        = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
+	targetKubeconfig  = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
+	tickPeriod        = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
 )
 
 func main() {
@@ -56,7 +58,11 @@ func main() {
 		log.Error(err, "could not use target kubeconfig", "target-kubeconfig", *targetKubeconfig)
 		os.Exit(1)
 	}
-	mgr, err := manager.New(targetConfig, manager.Options{})
+	options := manager.Options{
+		MetricsBindAddress:     fmt.Sprintf(":%d", *metricsPort),
+		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthProbePort),
+	}
+	mgr, err := manager.New(targetConfig, options)
 	if err != nil {
 		log.Error(err, "could not create manager")
 		os.Exit(1)
@@ -69,6 +75,16 @@ func main() {
 		Complete(reconciler)
 	if err != nil {
 		log.Error(err, "could not create controller")
+		os.Exit(1)
+	}
+	err = mgr.AddReadyzCheck("node reconciler", reconciler.ReadyChecker)
+	if err != nil {
+		log.Error(err, "could not add ready checker")
+		os.Exit(1)
+	}
+	err = mgr.AddHealthzCheck("node reconciler", reconciler.HealthzChecker)
+	if err != nil {
+		log.Error(err, "could not add healthz checker")
 		os.Exit(1)
 	}
 
@@ -87,6 +103,7 @@ func main() {
 		log.Error(err, "could not create AWS custom routes updater")
 		os.Exit(1)
 	}
+
 	ctx := signals.SetupSignalHandler()
 	reconciler.StartUpdater(ctx, customRoutes.Update, *tickPeriod, *syncPeriod, *maxDelay)
 	if err := mgr.Start(ctx); err != nil {
