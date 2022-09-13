@@ -110,21 +110,20 @@ outer:
 		if route.Origin != nil && *route.Origin != ec2.RouteOriginCreateRoute {
 			continue
 		}
-		if route.InstanceId == nil && route.DestinationCidrBlock == nil {
+		if route.DestinationCidrBlock == nil {
 			continue
 		}
 		if _, ipnet, err := net.ParseCIDR(*route.DestinationCidrBlock); err != nil || !r.podNetwork.Contains(ipnet.IP) {
 			continue
 		}
 		for i, nr := range nodeRoutes {
-			if nr.PodCIDR == *route.DestinationCidrBlock && nr.InstanceID == *route.InstanceId {
+			if nr.PodCIDR == *route.DestinationCidrBlock && route.InstanceId != nil && nr.InstanceID == *route.InstanceId {
 				found[i] = true
 				continue outer
 			}
 		}
 		toBeDeleted = append(toBeDeleted, internalNodeRoute{
 			destinationCidrBlock: *route.DestinationCidrBlock,
-			instanceId:           *route.InstanceId,
 		})
 	}
 
