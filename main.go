@@ -8,35 +8,44 @@ import (
 	"os"
 	"time"
 
-	"github.com/gardener/aws-custom-route-controller/pkg/controller"
-	"github.com/gardener/aws-custom-route-controller/pkg/updater"
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+
+	"github.com/gardener/aws-custom-route-controller/pkg/controller"
+	"github.com/gardener/aws-custom-route-controller/pkg/updater"
 )
 
 // Version is injected by build
 var Version string
 
+const (
+	// leaderElectionId is the name of the lease resource
+	leaderElectionId = "aws-custom-route-controller-leader-election"
+)
+
 var (
-	clusterName       = pflag.String("cluster-name", "", "cluster name used for AWS tags")
-	controlKubeconfig = pflag.String("control-kubeconfig", updater.InClusterConfig, fmt.Sprintf("path of control plane kubeconfig or '%s' for in-cluster config", updater.InClusterConfig))
-	healthProbePort   = pflag.Int("health-probe-port", 8081, "port for health probes")
-	maxDelay          = pflag.Duration("max-delay-on-failure", 5*time.Minute, "maximum delay if communication with AWS fails")
-	metricsPort       = pflag.Int("metrics-port", 8080, "port for metrics")
-	namespace         = pflag.String("namespace", "", "namespace of secret containing the AWS credentials on control plane")
-	podNetworkCidr    = pflag.String("pod-network-cidr", "", "CIDR for pod network")
-	region            = pflag.String("region", "", "AWS region")
-	secretName        = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
-	syncPeriod        = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
-	targetKubeconfig  = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
-	tickPeriod        = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
+	clusterName             = pflag.String("cluster-name", "", "cluster name used for AWS tags")
+	controlKubeconfig       = pflag.String("control-kubeconfig", updater.InClusterConfig, fmt.Sprintf("path of control plane kubeconfig or '%s' for in-cluster config", updater.InClusterConfig))
+	healthProbePort         = pflag.Int("health-probe-port", 8081, "port for health probes")
+	maxDelay                = pflag.Duration("max-delay-on-failure", 5*time.Minute, "maximum delay if communication with AWS fails")
+	metricsPort             = pflag.Int("metrics-port", 8080, "port for metrics")
+	namespace               = pflag.String("namespace", "", "namespace of secret containing the AWS credentials on control plane")
+	podNetworkCidr          = pflag.String("pod-network-cidr", "", "CIDR for pod network")
+	region                  = pflag.String("region", "", "AWS region")
+	secretName              = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
+	syncPeriod              = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
+	targetKubeconfig        = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
+	tickPeriod              = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
+	leaderElection          = pflag.Bool("leader-election", false, "enable leader election")
+	leaderElectionNamespace = pflag.String("leader-election-namespace", "kube-system", "namespace for the lease resource")
 )
 
 func main() {
@@ -59,8 +68,12 @@ func main() {
 		os.Exit(1)
 	}
 	options := manager.Options{
-		MetricsBindAddress:     fmt.Sprintf(":%d", *metricsPort),
-		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthProbePort),
+		LeaderElection:             *leaderElection,
+		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
+		LeaderElectionID:           leaderElectionId,
+		LeaderElectionNamespace:    *leaderElectionNamespace,
+		MetricsBindAddress:         fmt.Sprintf(":%d", *metricsPort),
+		HealthProbeBindAddress:     fmt.Sprintf(":%d", *healthProbePort),
 	}
 	mgr, err := manager.New(targetConfig, options)
 	if err != nil {
