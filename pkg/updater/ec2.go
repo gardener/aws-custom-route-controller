@@ -25,6 +25,7 @@ const TagNameKubernetesClusterPrefix = "kubernetes.io/cluster/"
 const TagNameKubernetesClusterLegacy = "KubernetesCluster"
 
 // EC2Routes is an abstraction over AWS EC2, to allow mocking/other implementations
+//
 //go:generate mockgen -destination=mock_ec2.go -package=updater github.com/gardener/aws-custom-route-controller/pkg/updater EC2Routes
 type EC2Routes interface {
 	DescribeRouteTables(request *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error)
