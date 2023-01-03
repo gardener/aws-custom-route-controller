@@ -81,7 +81,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	reconciler := controller.NewNodeReconciler()
+	reconciler := controller.NewNodeReconciler(mgr.Elected())
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
