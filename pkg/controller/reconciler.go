@@ -28,14 +28,17 @@ type NodeReconciler struct {
 	log                logr.Logger
 	initialiseStarted  atomic.Bool
 	initialiseFinished atomic.Bool
+	updaterStarted     atomic.Bool
+	elected            <-chan struct{}
 	nodeRoutes         *updater.NamedNodeRoutes
 	lastTick           atomic.Time
 	tickPeriod         time.Duration
 }
 
 // NewNodeReconciler creates a NodeReconciler instance
-func NewNodeReconciler() *NodeReconciler {
+func NewNodeReconciler(elected <-chan struct{}) *NodeReconciler {
 	return &NodeReconciler{
+		elected:    elected,
 		nodeRoutes: updater.NewNamedNodeRoutes(),
 	}
 }
@@ -48,9 +51,14 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 	log := r.log.WithName("ticker")
 
 	go func() {
-		var lastUpdate time.Time
-		var lastFailure time.Time
-		var delay time.Duration
+		var (
+			lastUpdate  time.Time
+			lastFailure time.Time
+			delay       time.Duration
+		)
+
+		r.updaterStarted.Store(true)
+
 		for {
 			select {
 			case <-ticker.C:
@@ -114,13 +122,25 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 }
 
 func (r *NodeReconciler) ReadyChecker(_ *http.Request) error {
-	if !r.initialiseFinished.Load() {
-		return fmt.Errorf("not initialised")
+	if !r.updaterStarted.Load() {
+		return fmt.Errorf("updater not started")
 	}
 	return nil
 }
 
 func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
+	if !r.initialiseFinished.Load() {
+		if !r.initialiseStarted.Load() {
+			select {
+			case <-r.elected:
+				return fmt.Errorf("initialise not started")
+			default:
+				// waiting for leader election
+				return nil
+			}
+		}
+		return fmt.Errorf("initialise not finished")
+	}
 	if r.lastTick.Load().Add(3 * r.tickPeriod).Before(time.Now()) {
 		return fmt.Errorf("missing tick")
 	}
