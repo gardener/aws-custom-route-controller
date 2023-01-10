@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/go-logr/logr"
+	"go.uber.org/multierr"
 )
 
 // CustomRoutes updates route tables for an AWS cluster
@@ -70,6 +71,7 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 	if err != nil {
 		return err
 	}
+	var updateErrors error
 	for _, table := range tables {
 		toBeCreated, toBeDeleted := r.calcRouteChanges(table, routes)
 		for _, del := range toBeDeleted {
@@ -79,7 +81,8 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 			}
 			_, err = r.ec2.DeleteRoute(req)
 			if err != nil {
-				return fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err)
+				updateErrors = multierr.Append(updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
+				continue
 			}
 			r.log.Info("route deleted", "table", *table.RouteTableId, "destination", del.destinationCidrBlock, "instanceId", del.instanceId)
 		}
@@ -91,7 +94,8 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 			}
 			_, err = r.ec2.CreateRoute(req)
 			if err != nil {
-				return fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err)
+				updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
+				continue
 			}
 			r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId)
 		}
@@ -99,8 +103,7 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 			r.log.Info("no routes updated", "table", *table.RouteTableId)
 		}
 	}
-
-	return nil
+	return updateErrors
 }
 
 func (r *CustomRoutes) calcRouteChanges(table *ec2.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute) {
