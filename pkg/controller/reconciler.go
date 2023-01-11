@@ -17,6 +17,8 @@ import (
 	"go.uber.org/atomic"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
@@ -33,13 +35,17 @@ type NodeReconciler struct {
 	nodeRoutes         *updater.NamedNodeRoutes
 	lastTick           atomic.Time
 	tickPeriod         time.Duration
+
+	recorder    record.EventRecorder
+	lastEventOk bool
 }
 
 // NewNodeReconciler creates a NodeReconciler instance
-func NewNodeReconciler(elected <-chan struct{}) *NodeReconciler {
+func NewNodeReconciler(elected <-chan struct{}, recorder record.EventRecorder) *NodeReconciler {
 	return &NodeReconciler{
 		elected:    elected,
 		nodeRoutes: updater.NewNamedNodeRoutes(),
+		recorder:   recorder,
 	}
 }
 
@@ -78,7 +84,8 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 					r.nodeRoutes.SetChanged()
 				}
 				if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
-					if err := updateFunc(routes); err != nil {
+					err := updateFunc(routes)
+					if err != nil {
 						log.Error(err, "updating routes failed")
 						lastFailure = time.Now()
 						if delay == 0 {
@@ -92,12 +99,40 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 					} else {
 						delay = 0
 					}
+					r.reportEventIfNeeded(err)
 					lastUpdate = time.Now()
 				}
 				r.lastTick.Store(time.Now())
 			}
 		}
 	}()
+}
+
+func (r *NodeReconciler) reportEventIfNeeded(err error) {
+	isOk := err == nil
+	if isOk && r.lastEventOk {
+		// only single good event is sent (initial or after recovery)
+		return
+	}
+
+	// An object is needed this event is about.
+	// As the aws-custom-route-controller has not many objects in the shoot cluster, just use its ServiceAccount.
+	ref := &corev1.ObjectReference{
+		Kind:       "ServiceAccount",
+		APIVersion: "v1",
+		Namespace:  metav1.NamespaceSystem,
+		Name:       "aws-custom-route-controller",
+	}
+	if isOk {
+		r.recorder.Event(ref, corev1.EventTypeNormal, "RoutesUpToDate", "routes for all route tables are up-to-date")
+	} else {
+		msg := err.Error()
+		if len(msg) > 300 {
+			msg = msg[:300] + "..."
+		}
+		r.recorder.Event(ref, corev1.EventTypeWarning, "RoutesUpdateFailed", msg)
+	}
+	r.lastEventOk = isOk
 }
 
 // Reconcile extracts pod cidrs from nodes
