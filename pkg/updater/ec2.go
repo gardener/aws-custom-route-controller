@@ -67,3 +67,12 @@ func hasClusterTag(clusterID string, tags []*ec2.Tag) bool {
 	}
 	return false
 }
+
+func getNameTagValue(tags []*ec2.Tag) string {
+	for _, tag := range tags {
+		if aws.StringValue(tag.Key) == "Name" {
+			return aws.StringValue(tag.Value)
+		}
+	}
+	return ""
+}

@@ -106,7 +106,14 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 	return updateErrors
 }
 
+func (r *CustomRoutes) isMainTable(table *ec2.RouteTable) bool {
+	return getNameTagValue(table.Tags) == r.clusterName
+}
+
 func (r *CustomRoutes) calcRouteChanges(table *ec2.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute) {
+	if r.isMainTable(table) {
+		nodeRoutes = nil
+	}
 	found := make([]bool, len(nodeRoutes))
 outer:
 	for _, route := range table.Routes {

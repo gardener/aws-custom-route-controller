@@ -27,6 +27,8 @@ import (
 var Version string
 
 const (
+	// componentName is the component name
+	componentName = "aws-custom-route-controller"
 	// leaderElectionId is the name of the lease resource
 	leaderElectionId = "aws-custom-route-controller-leader-election"
 )
@@ -51,7 +53,7 @@ var (
 func main() {
 	logf.SetLogger(zap.New())
 
-	var log = logf.Log.WithName("aws-custom-route-controller")
+	var log = logf.Log.WithName(componentName)
 	log.Info("version", "version", Version)
 
 	pflag.Parse()
@@ -81,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	reconciler := controller.NewNodeReconciler(mgr.Elected())
+	reconciler := controller.NewNodeReconciler(mgr.Elected(), mgr.GetEventRecorderFor(componentName))
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).
