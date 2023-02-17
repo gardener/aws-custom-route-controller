@@ -3,6 +3,12 @@ aws-custom-route-controller:
   base_definition:
     repo: ~
     traits:
+      component_descriptor:
+        component_labels:
+        - name: 'cloud.gardener.cnudie/responsibles'
+          value:
+          - type: 'codeowners'
+        retention_policy: 'clean-snapshots'
       version:
         preprocess:
           'inject-commit-hash'
@@ -23,8 +29,6 @@ aws-custom-route-controller:
     head-update:
       traits:
         draft_release: ~
-        component_descriptor:
-          retention_policy: 'clean-snapshots'
     pull-request:
       traits:
         pull-request: ~
