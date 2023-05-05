@@ -50,6 +50,10 @@ format:
 docker-images:
 	@docker build -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f Dockerfile .
 
+.PHONY: docker-images-linux-amd64
+docker-images-linux-amd64:
+	@docker buildx build --platform linux/amd64 -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f Dockerfile .
+
 $(GOIMPORTS): go.mod
 	go build -o $(GOIMPORTS) golang.org/x/tools/cmd/goimports
 
