@@ -5,6 +5,8 @@ package main
 
 import (
 	"fmt"
+	"github.com/gardener/aws-custom-route-controller/pkg/util/logger"
+	"k8s.io/klog/v2"
 	"os"
 	"time"
 
@@ -15,7 +17,6 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -48,12 +49,16 @@ var (
 	tickPeriod              = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
 	leaderElection          = pflag.Bool("leader-election", false, "enable leader election")
 	leaderElectionNamespace = pflag.String("leader-election-namespace", "kube-system", "namespace for the lease resource")
+	logLevel                = pflag.String("log-level", logger.InfoLevel, "LogLevel is the level/severity for the logs. Must be one of [info,debug,error].")
+	logFormat               = pflag.String("log-format", logger.FormatJSON, "output format for the logs. Must be one of [text,json].")
 )
 
 func main() {
-	logf.SetLogger(zap.New())
+
+	logf.SetLogger(logger.MustNewZapLogger(*logLevel, *logFormat))
 
 	var log = logf.Log.WithName(componentName)
+	klog.SetLogger(log)
 	log.Info("version", "version", Version)
 
 	pflag.Parse()
