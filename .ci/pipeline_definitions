@@ -1,7 +1,5 @@
 aws-custom-route-controller:
-  template: 'default'
   base_definition:
-    repo: ~
     traits:
       component_descriptor:
         component_labels:
@@ -19,7 +17,6 @@ aws-custom-route-controller:
             inputs:
               repos:
                 source: ~ # default
-            registry: 'gcr-readwrite'
             image: 'eu.gcr.io/gardener-project/gardener/aws-custom-route-controller'
             dockerfile: 'Dockerfile'
     steps:
