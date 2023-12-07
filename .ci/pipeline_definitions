@@ -2,6 +2,8 @@ aws-custom-route-controller:
   base_definition:
     traits:
       component_descriptor:
+        ocm_repository: europe-docker.pkg.dev/gardener-project/snapshots
+        component_name: github.com/gardener/aws-custom-route-controller
         component_labels:
         - name: 'cloud.gardener.cnudie/responsibles'
           value:
@@ -17,7 +19,7 @@ aws-custom-route-controller:
             inputs:
               repos:
                 source: ~ # default
-            image: 'eu.gcr.io/gardener-project/gardener/aws-custom-route-controller'
+            image: europe-docker.pkg.dev/gardener-project/snapshots/gardener/aws-custom-route-controller
             dockerfile: 'Dockerfile'
     steps:
       verify:
@@ -25,6 +27,9 @@ aws-custom-route-controller:
   jobs:
     head-update:
       traits:
+        component_descriptor:
+          ocm_repository_mappings:
+            - repository: europe-docker.pkg.dev/gardener-project/releases
         draft_release: ~
     pull-request:
       traits:
@@ -33,6 +38,12 @@ aws-custom-route-controller:
       traits:
         version:
           preprocess: 'finalize'
+        component_descriptor:
+          ocm_repository: europe-docker.pkg.dev/gardener-project/releases
+        publish:
+          dockerimages:
+            aws-custom-route-controller:
+              image: europe-docker.pkg.dev/gardener-project/releases/gardener/aws-custom-route-controller
         release:
           nextversion: 'bump_minor'
         slack:
@@ -41,5 +52,3 @@ aws-custom-route-controller:
             internal_scp_workspace:
               channel_name: 'C9CEBQPGE' #sap-tech-gardener
               slack_cfg_name: 'scp_workspace'
-        component_descriptor:
-          component_name: 'github.com/gardener/aws-custom-route-controller'

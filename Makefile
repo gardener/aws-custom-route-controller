@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-REGISTRY              := eu.gcr.io/gardener-project
+REGISTRY              := europe-docker.pkg.dev/gardener-project/public
 EXECUTABLE            := aws-custom-route-controller
 PROJECT               := github.com/gardener/aws-custom-route-controller
 IMAGE_REPOSITORY      := $(REGISTRY)/gardener/aws-custom-route-controller
