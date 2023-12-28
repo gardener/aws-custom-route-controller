@@ -25,7 +25,7 @@ import (
 
 // NodeReconciler watches Nodes for pod CIDRs to update route table(s)
 type NodeReconciler struct {
-	client.Client
+	client client.Client
 
 	log                logr.Logger
 	initialiseStarted  atomic.Bool
@@ -41,8 +41,15 @@ type NodeReconciler struct {
 }
 
 // NewNodeReconciler creates a NodeReconciler instance
-func NewNodeReconciler(elected <-chan struct{}, recorder record.EventRecorder) *NodeReconciler {
+func NewNodeReconciler(
+	client client.Client,
+	log logr.Logger,
+	elected <-chan struct{},
+	recorder record.EventRecorder,
+) *NodeReconciler {
 	return &NodeReconciler{
+		client:     client,
+		log:        log.WithName("controller").WithName("node"),
 		elected:    elected,
 		nodeRoutes: updater.NewNamedNodeRoutes(),
 		recorder:   recorder,
@@ -142,7 +149,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 	}
 
 	node := &corev1.Node{}
-	err := r.Get(ctx, req.NamespacedName, node)
+	err := r.client.Get(ctx, req.NamespacedName, node)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			r.removeNodeRoute(req.Name)
@@ -185,7 +192,7 @@ func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
 func (r *NodeReconciler) initialise(ctx context.Context) {
 	r.log.Info("initialise started")
 	nodeList := &corev1.NodeList{}
-	if err := r.Client.List(ctx, nodeList); err != nil {
+	if err := r.client.List(ctx, nodeList); err != nil {
 		r.log.Error(err, "listing nodes failed")
 		panic(err) // to avoid cleaning routing table
 	}
@@ -194,16 +201,6 @@ func (r *NodeReconciler) initialise(ctx context.Context) {
 	}
 	r.initialiseFinished.Store(true)
 	r.log.Info("initialise finished")
-}
-
-func (r *NodeReconciler) InjectClient(c client.Client) error {
-	r.Client = c
-	return nil
-}
-
-func (r *NodeReconciler) InjectLogger(l logr.Logger) error {
-	r.log = l.WithName("controller").WithName("node")
-	return nil
 }
 
 func (r *NodeReconciler) addNodeRoute(node *corev1.Node) {

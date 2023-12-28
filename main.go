@@ -5,8 +5,11 @@ package main
 
 import (
 	"fmt"
+
 	"github.com/gardener/aws-custom-route-controller/pkg/util/logger"
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
+
 	"os"
 	"time"
 
@@ -79,8 +82,10 @@ func main() {
 		LeaderElectionResourceLock: resourcelock.LeasesResourceLock,
 		LeaderElectionID:           leaderElectionId,
 		LeaderElectionNamespace:    *leaderElectionNamespace,
-		MetricsBindAddress:         fmt.Sprintf(":%d", *metricsPort),
-		HealthProbeBindAddress:     fmt.Sprintf(":%d", *healthProbePort),
+		Metrics: server.Options{
+			BindAddress: fmt.Sprintf(":%d", *metricsPort),
+		},
+		HealthProbeBindAddress: fmt.Sprintf(":%d", *healthProbePort),
 	}
 	mgr, err := manager.New(targetConfig, options)
 	if err != nil {
@@ -88,7 +93,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	reconciler := controller.NewNodeReconciler(mgr.Elected(), mgr.GetEventRecorderFor(componentName))
+	reconciler := controller.NewNodeReconciler(mgr.GetClient(), log, mgr.Elected(), mgr.GetEventRecorderFor(componentName))
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).

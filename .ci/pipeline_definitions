@@ -23,7 +23,7 @@ aws-custom-route-controller:
             dockerfile: 'Dockerfile'
     steps:
       verify:
-        image: golang:1.20.4
+        image: golang:1.21.5
   jobs:
     head-update:
       traits:

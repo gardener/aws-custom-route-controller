@@ -16,24 +16,21 @@ TOOLS_DIR                  := $(REPO_ROOT)/hack
 TOOLS_BIN_DIR              := $(TOOLS_DIR)/bin
 MOCKGEN                    := $(TOOLS_BIN_DIR)/mockgen
 
-.PHONY: revendor
-revendor:
-	@env GO111MODULE=on go mod vendor
-	@env GO111MODULE=on go mod tidy
+.PHONY: tidy
+tidy:
+	go mod tidy
 
 # build local executable
 .PHONY: build-local
 build-local:
-	@CGO_ENABLED=1 GO111MODULE=on go build -o $(EXECUTABLE) \
+	@CGO_ENABLED=1 go build -o $(EXECUTABLE) \
 		-race \
-		-mod=vendor \
 		-ldflags "-X 'main.Version=$(EFFECTIVE_VERSION)' -X 'main.ImageTag=$(IMAGE_TAG)'"\
 		main.go
 
 .PHONY: release
 release:
-	@CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) GO111MODULE=on go build -o $(EXECUTABLE) \
-        -mod=vendor \
+	@CGO_ENABLED=0 GOOS=linux GOARCH=$(GOARCH) go build -o $(EXECUTABLE) \
         -ldflags "-w -X 'main.Version=$(EFFECTIVE_VERSION)' -X 'main.ImageTag=$(IMAGE_TAG)'"\
 		main.go
 
@@ -44,7 +41,7 @@ check: $(GOIMPORTS)
 # Run go fmt against code
 .PHONY: format
 format:
-	@env GO111MODULE=on go fmt ./...
+	@env go fmt ./...
 
 .PHONY: docker-images
 docker-images:
@@ -62,17 +59,17 @@ $(MOCKGEN): go.mod
 
 .PHONY: generate
 generate: $(MOCKGEN)
-	@go generate ./pkg/...
+	@MOCKGEN=$(MOCKGEN) go generate ./pkg/...
 
 # Run tests
 .PHONY: test
 test:
-	@env GO111MODULE=on go test ./pkg/...
+	@env go test ./pkg/...
 
 .PHONY: update-dependencies
 update-dependencies:
-	@env GO111MODULE=on go get -u
-	@make revendor
+	@env go get -u
+	@make tidy
 
 .PHONY: verify
 verify: check format test
