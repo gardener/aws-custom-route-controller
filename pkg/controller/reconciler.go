@@ -73,44 +73,42 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 		r.updaterStarted.Store(true)
 
 		for {
-			select {
-			case <-ticker.C:
-				if ctx.Err() != nil {
-					log.Info("updater loop cancelled")
-					return
-				}
-				if !r.initialiseFinished.Load() {
-					continue
-				}
-				if lastUpdate.Add(syncPeriod).Before(time.Now()) {
-					log.Info("sync")
-					r.nodeRoutes.SetChanged()
-				}
-				if delay > 0 && lastFailure.Add(delay).Before(time.Now()) {
-					log.Info("retry")
-					r.nodeRoutes.SetChanged()
-				}
-				if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
-					err := updateFunc(routes)
-					if err != nil {
-						log.Error(err, "updating routes failed")
-						lastFailure = time.Now()
-						if delay == 0 {
-							delay = tickPeriod
-						} else {
-							delay = 4 * delay / 3
-							if delay > maxDelayOnFailure {
-								delay = maxDelayOnFailure
-							}
-						}
-					} else {
-						delay = 0
-					}
-					r.reportEventIfNeeded(err)
-					lastUpdate = time.Now()
-				}
-				r.lastTick.Store(time.Now())
+			<-ticker.C
+			if ctx.Err() != nil {
+				log.Info("updater loop cancelled")
+				return
 			}
+			if !r.initialiseFinished.Load() {
+				continue
+			}
+			if lastUpdate.Add(syncPeriod).Before(time.Now()) {
+				log.Info("sync")
+				r.nodeRoutes.SetChanged()
+			}
+			if delay > 0 && lastFailure.Add(delay).Before(time.Now()) {
+				log.Info("retry")
+				r.nodeRoutes.SetChanged()
+			}
+			if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
+				err := updateFunc(routes)
+				if err != nil {
+					log.Error(err, "updating routes failed")
+					lastFailure = time.Now()
+					if delay == 0 {
+						delay = tickPeriod
+					} else {
+						delay = 4 * delay / 3
+						if delay > maxDelayOnFailure {
+							delay = maxDelayOnFailure
+						}
+					}
+				} else {
+					delay = 0
+				}
+				r.reportEventIfNeeded(err)
+				lastUpdate = time.Now()
+			}
+			r.lastTick.Store(time.Now())
 		}
 	}()
 }

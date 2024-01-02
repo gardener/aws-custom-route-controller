@@ -5,26 +5,24 @@ package main
 
 import (
 	"fmt"
-
-	"github.com/gardener/aws-custom-route-controller/pkg/util/logger"
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
-
 	"os"
 	"time"
+
+	"github.com/gardener/aws-custom-route-controller/pkg/controller"
+	"github.com/gardener/aws-custom-route-controller/pkg/updater"
+	"github.com/gardener/aws-custom-route-controller/pkg/util/logger"
 
 	"github.com/go-logr/logr"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
-
-	"github.com/gardener/aws-custom-route-controller/pkg/controller"
-	"github.com/gardener/aws-custom-route-controller/pkg/updater"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
 // Version is injected by build
@@ -48,7 +46,7 @@ var (
 	region                  = pflag.String("region", "", "AWS region")
 	secretName              = pflag.String("secret-name", "cloudprovider", "name of secret containing the AWS credentials on control plane")
 	syncPeriod              = pflag.Duration("sync-period", 1*time.Hour, "period for syncing routes")
-	targetKubeconfig        = pflag.String("target-kubeconfig", "", fmt.Sprintf("path of target kubeconfig"))
+	targetKubeconfig        = pflag.String("target-kubeconfig", "", "path of target kubeconfig")
 	tickPeriod              = pflag.Duration("tick-period", 5*time.Second, "tick period for checking for updates")
 	leaderElection          = pflag.Bool("leader-election", false, "enable leader election")
 	leaderElectionNamespace = pflag.String("leader-election-namespace", "kube-system", "namespace for the lease resource")

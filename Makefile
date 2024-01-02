@@ -12,9 +12,8 @@ IMAGE_TAG             := $(VERSION)
 EFFECTIVE_VERSION     := $(VERSION)-$(shell git rev-parse HEAD)
 GOARCH                := amd64
 
-TOOLS_DIR                  := $(REPO_ROOT)/hack
-TOOLS_BIN_DIR              := $(TOOLS_DIR)/bin
-MOCKGEN                    := $(TOOLS_BIN_DIR)/mockgen
+TOOLS_DIR := hack/tools
+include $(TOOLS_DIR)/tools.mk
 
 .PHONY: tidy
 tidy:
@@ -35,13 +34,14 @@ release:
 		main.go
 
 .PHONY: check
-check: $(GOIMPORTS)
+check: $(GOIMPORTS) $(GOLANGCI_LINT)
 	go vet ./...
+	GOIMPORTS=$(GOIMPORTS) GOLANGCI_LINT=$(GOLANGCI_LINT) hack/check.sh ./...
 
 # Run go fmt against code
 .PHONY: format
-format:
-	@env go fmt ./...
+format: $(GOIMPORTS)
+	$(GOIMPORTS) -l -w  main.go ./pkg
 
 .PHONY: docker-images
 docker-images:
@@ -51,15 +51,9 @@ docker-images:
 docker-images-linux-amd64:
 	@docker buildx build --platform linux/amd64 -t $(IMAGE_REPOSITORY):$(IMAGE_TAG) -f Dockerfile .
 
-$(GOIMPORTS): go.mod
-	go build -o $(GOIMPORTS) golang.org/x/tools/cmd/goimports
-
-$(MOCKGEN): go.mod
-	go build -o $(MOCKGEN) github.com/golang/mock/mockgen
-
 .PHONY: generate
 generate: $(MOCKGEN)
-	@MOCKGEN=$(MOCKGEN) go generate ./pkg/...
+	@MOCKGEN=$(shell realpath $(MOCKGEN)) go generate ./pkg/...
 
 # Run tests
 .PHONY: test

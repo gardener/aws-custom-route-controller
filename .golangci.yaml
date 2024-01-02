@@ -8,3 +8,6 @@ run:
 linters:
   disable:
     - unused
+linters-settings:
+  goimports:
+    local-prefixes: github.com/gardener/aws-custom-route-controller
