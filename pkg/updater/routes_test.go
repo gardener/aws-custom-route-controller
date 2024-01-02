@@ -9,7 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/gardener/aws-custom-route-controller/pkg/updater"
 	"github.com/golang/mock/gomock"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
