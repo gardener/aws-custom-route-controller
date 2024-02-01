@@ -1,6 +1,6 @@
 # AWS Custom Route Controller
 
-[![reuse compliant](https://reuse.software/badge/reuse-compliant.svg)](https://reuse.software/)
+[![REUSE status](https://api.reuse.software/badge/github.com/gardener/aws-custom-route-controller)](https://api.reuse.software/info/github.com/gardener/aws-custom-route-controller)
 
 The AWS Custom Route Controller manages the routes to the pods via their node instances.
 It watches for node creation and deletions and updates the route tables accordingly.
