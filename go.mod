@@ -1,6 +1,6 @@
 module github.com/gardener/aws-custom-route-controller
 
-go 1.21
+go 1.23
 
 require (
 	github.com/aws/aws-sdk-go v1.49.11
