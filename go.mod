@@ -3,7 +3,7 @@ module github.com/gardener/aws-custom-route-controller
 go 1.23.0
 
 require (
-	github.com/aws/aws-sdk-go v1.49.11
+	github.com/aws/aws-sdk-go v1.55.5
 	github.com/go-logr/logr v1.4.2
 	github.com/golang/mock v1.6.0
 	github.com/onsi/ginkgo/v2 v2.20.2
