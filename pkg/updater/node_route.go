@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gardener/aws-custom-route-controller/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -114,7 +115,8 @@ func extractNodeRoute(node *corev1.Node) *NodeRoute {
 		return nil
 	}
 	_, instanceID, _ := decodeRegionAndInstanceID(node.Spec.ProviderID)
-	return NewNodeRoute(instanceID, node.Spec.PodCIDR)
+	podCIDR, _ := util.GetIPv4CIDR(node.Spec.PodCIDRs)
+	return NewNodeRoute(instanceID, podCIDR)
 }
 
 // decodeRegionAndInstanceID extracts region and instanceID
@@ -125,7 +127,7 @@ func decodeRegionAndInstanceID(providerID string) (string, string, error) {
 	}
 	splitProviderID := strings.Split(providerID, "/")
 	if len(splitProviderID) < 2 {
-		err := fmt.Errorf("Unable to decode provider-ID")
+		err := fmt.Errorf("unable to decode provider-ID")
 		return "", "", err
 	}
 	return splitProviderID[len(splitProviderID)-2], splitProviderID[len(splitProviderID)-1], nil

@@ -14,35 +14,35 @@ import (
 
 var _ = Describe("NamedNodeRoutes", func() {
 	var (
-		podCIDR1        = "10.0.1.0/24"
+		podCIDRs1       = []string{"10.0.1.0/24"}
 		node1InstanceID = "i-0001"
 		node1           = &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node1",
 			},
 			Spec: corev1.NodeSpec{
-				PodCIDR:    podCIDR1,
+				PodCIDRs:   podCIDRs1,
 				ProviderID: makeProviderID(node1InstanceID),
 			},
 		}
-		podCIDR2        = "10.0.7.0/24"
+		podCIDRs2       = []string{"10.0.7.0/24"}
 		node2InstanceID = "i-0001"
 		node2           = &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node2",
 			},
 			Spec: corev1.NodeSpec{
-				PodCIDR:    podCIDR2,
+				PodCIDRs:   podCIDRs2,
 				ProviderID: makeProviderID(node2InstanceID),
 			},
 		}
-		podCIDR3 = "10.0.33.0/24"
-		node3    = &corev1.Node{
+		podCIDRs3 = []string{"10.0.33.0/24"}
+		node3     = &corev1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "node3",
 			},
 			Spec: corev1.NodeSpec{
-				PodCIDR: podCIDR3,
+				PodCIDRs: podCIDRs3,
 			},
 		}
 	)
@@ -50,14 +50,14 @@ var _ = Describe("NamedNodeRoutes", func() {
 	It("should extract node data", func() {
 		routes := updater.NewNamedNodeRoutes()
 		route1, changed1 := routes.AddNodeRoute(node1)
-		Expect(route1).To(Equal(updater.NewNodeRoute(node1InstanceID, podCIDR1)))
+		Expect(route1).To(Equal(updater.NewNodeRoute(node1InstanceID, podCIDRs1[0])))
 		Expect(changed1).To(BeTrue())
 		route1b, changed1b := routes.AddNodeRoute(node1)
 		Expect(route1b).NotTo(BeNil())
 		Expect(changed1b).To(BeFalse())
 
 		route2, changed2 := routes.AddNodeRoute(node2)
-		Expect(route2).To(Equal(updater.NewNodeRoute(node2InstanceID, podCIDR2)))
+		Expect(route2).To(Equal(updater.NewNodeRoute(node2InstanceID, podCIDRs2[0])))
 		Expect(changed2).To(BeTrue())
 
 		route3, changed3 := routes.AddNodeRoute(node3)
