@@ -6,10 +6,12 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gardener/aws-custom-route-controller/pkg/controller"
 	"github.com/gardener/aws-custom-route-controller/pkg/updater"
+	"github.com/gardener/aws-custom-route-controller/pkg/util"
 	"github.com/gardener/aws-custom-route-controller/pkg/util/logger"
 
 	"github.com/go-logr/logr"
@@ -121,7 +123,13 @@ func main() {
 		log.Error(err, "could not create AWS EC2 interface")
 		os.Exit(1)
 	}
-	customRoutes, err := updater.NewCustomRoutes(log.WithName("updater"), ec2Routes, *clusterName, *podNetworkCidr)
+	podCIDR, err := util.GetIPv4CIDR(strings.Split(*podNetworkCidr, ","))
+	if err != nil {
+		log.Error(err, "could not parse IPv4 address from pod-network-cidr")
+		os.Exit(1)
+	}
+
+	customRoutes, err := updater.NewCustomRoutes(log.WithName("updater"), ec2Routes, *clusterName, podCIDR)
 	if err != nil {
 		log.Error(err, "could not create AWS custom routes updater")
 		os.Exit(1)
