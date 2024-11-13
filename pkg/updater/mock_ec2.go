@@ -5,9 +5,10 @@
 package updater
 
 import (
+	context "context"
 	reflect "reflect"
 
-	ec2 "github.com/aws/aws-sdk-go/service/ec2"
+	ec2 "github.com/aws/aws-sdk-go-v2/service/ec2"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -35,46 +36,61 @@ func (m *MockEC2Routes) EXPECT() *MockEC2RoutesMockRecorder {
 }
 
 // CreateRoute mocks base method.
-func (m *MockEC2Routes) CreateRoute(arg0 *ec2.CreateRouteInput) (*ec2.CreateRouteOutput, error) {
+func (m *MockEC2Routes) CreateRoute(arg0 context.Context, arg1 *ec2.CreateRouteInput, arg2 ...func(*ec2.Options)) (*ec2.CreateRouteOutput, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateRoute", arg0)
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "CreateRoute", varargs...)
 	ret0, _ := ret[0].(*ec2.CreateRouteOutput)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateRoute indicates an expected call of CreateRoute.
-func (mr *MockEC2RoutesMockRecorder) CreateRoute(arg0 interface{}) *gomock.Call {
+func (mr *MockEC2RoutesMockRecorder) CreateRoute(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRoute", reflect.TypeOf((*MockEC2Routes)(nil).CreateRoute), arg0)
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateRoute", reflect.TypeOf((*MockEC2Routes)(nil).CreateRoute), varargs...)
 }
 
 // DeleteRoute mocks base method.
-func (m *MockEC2Routes) DeleteRoute(arg0 *ec2.DeleteRouteInput) (*ec2.DeleteRouteOutput, error) {
+func (m *MockEC2Routes) DeleteRoute(arg0 context.Context, arg1 *ec2.DeleteRouteInput, arg2 ...func(*ec2.Options)) (*ec2.DeleteRouteOutput, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteRoute", arg0)
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DeleteRoute", varargs...)
 	ret0, _ := ret[0].(*ec2.DeleteRouteOutput)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteRoute indicates an expected call of DeleteRoute.
-func (mr *MockEC2RoutesMockRecorder) DeleteRoute(arg0 interface{}) *gomock.Call {
+func (mr *MockEC2RoutesMockRecorder) DeleteRoute(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRoute", reflect.TypeOf((*MockEC2Routes)(nil).DeleteRoute), arg0)
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRoute", reflect.TypeOf((*MockEC2Routes)(nil).DeleteRoute), varargs...)
 }
 
 // DescribeRouteTables mocks base method.
-func (m *MockEC2Routes) DescribeRouteTables(arg0 *ec2.DescribeRouteTablesInput) (*ec2.DescribeRouteTablesOutput, error) {
+func (m *MockEC2Routes) DescribeRouteTables(arg0 context.Context, arg1 *ec2.DescribeRouteTablesInput, arg2 ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DescribeRouteTables", arg0)
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DescribeRouteTables", varargs...)
 	ret0, _ := ret[0].(*ec2.DescribeRouteTablesOutput)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DescribeRouteTables indicates an expected call of DescribeRouteTables.
-func (mr *MockEC2RoutesMockRecorder) DescribeRouteTables(arg0 interface{}) *gomock.Call {
+func (mr *MockEC2RoutesMockRecorder) DescribeRouteTables(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeRouteTables", reflect.TypeOf((*MockEC2Routes)(nil).DescribeRouteTables), arg0)
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeRouteTables", reflect.TypeOf((*MockEC2Routes)(nil).DescribeRouteTables), varargs...)
 }

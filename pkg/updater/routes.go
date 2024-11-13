@@ -7,11 +7,13 @@
 package updater
 
 import (
+	"context"
 	"fmt"
 	"net"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
 	"go.uber.org/multierr"
 )
@@ -43,11 +45,11 @@ type internalNodeRoute struct {
 	instanceId           string
 }
 
-func (r *CustomRoutes) findRouteTables() ([]*ec2.RouteTable, error) {
-	var tables []*ec2.RouteTable
+func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTable, error) {
+	var tables []ec2types.RouteTable
 
 	request := &ec2.DescribeRouteTablesInput{}
-	response, err := r.ec2.DescribeRouteTables(request)
+	response, err := r.ec2.DescribeRouteTables(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +68,8 @@ func (r *CustomRoutes) findRouteTables() ([]*ec2.RouteTable, error) {
 }
 
 // Update updates all found route tables (tagged with the clusterName) with the podCIDR to node instance routes
-func (r *CustomRoutes) Update(routes []NodeRoute) error {
-	tables, err := r.findRouteTables()
+func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute) error {
+	tables, err := r.findRouteTables(ctx)
 	if err != nil {
 		return err
 	}
@@ -79,7 +81,7 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 				RouteTableId:         table.RouteTableId,
 				DestinationCidrBlock: aws.String(del.destinationCidrBlock),
 			}
-			_, err = r.ec2.DeleteRoute(req)
+			_, err = r.ec2.DeleteRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
 				continue
@@ -88,11 +90,11 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 		}
 		for _, create := range toBeCreated {
 			req := &ec2.CreateRouteInput{
-				RouteTableId:         table.RouteTableId,
 				DestinationCidrBlock: aws.String(create.destinationCidrBlock),
 				InstanceId:           aws.String(create.instanceId),
+				RouteTableId:         table.RouteTableId,
 			}
-			_, err = r.ec2.CreateRoute(req)
+			_, err = r.ec2.CreateRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
 				continue
@@ -106,18 +108,18 @@ func (r *CustomRoutes) Update(routes []NodeRoute) error {
 	return updateErrors
 }
 
-func (r *CustomRoutes) isMainTable(table *ec2.RouteTable) bool {
+func (r *CustomRoutes) isMainTable(table ec2types.RouteTable) bool {
 	return getNameTagValue(table.Tags) == r.clusterName
 }
 
-func (r *CustomRoutes) calcRouteChanges(table *ec2.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute) {
+func (r *CustomRoutes) calcRouteChanges(table ec2types.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute) {
 	if r.isMainTable(table) {
 		nodeRoutes = nil
 	}
 	found := make([]bool, len(nodeRoutes))
 outer:
 	for _, route := range table.Routes {
-		if route.Origin != nil && *route.Origin != ec2.RouteOriginCreateRoute {
+		if route.Origin != ec2types.RouteOriginCreateRoute {
 			continue
 		}
 		if route.DestinationCidrBlock == nil {
