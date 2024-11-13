@@ -12,8 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v2config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 // TagNameKubernetesClusterPrefix is the tag name we use to differentiate multiple
@@ -37,10 +39,21 @@ type EC2Routes interface {
 }
 
 func NewAWSEC2Routes(creds *Credentials, region string) (EC2Routes, error) {
+	var credentialsProvider aws.CredentialsProvider
+	if creds.AccessKey != nil {
+		credentialsProvider = credentials.NewStaticCredentialsProvider(creds.AccessKey.ID, creds.AccessKey.Secret, "")
+	} else {
+		credentialsProvider = stscreds.NewWebIdentityRoleProvider(
+			sts.NewFromConfig(aws.Config{Region: region}),
+			creds.WorkloadIdentity.RoleARN,
+			creds.WorkloadIdentity.TokenRetriever,
+		)
+	}
+
 	cfg, err := v2config.LoadDefaultConfig(
 		context.TODO(),
 		v2config.WithRegion(region),
-		v2config.WithCredentialsProvider(aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(creds.AccessKeyID, creds.SecretAccessKey, ""))),
+		v2config.WithCredentialsProvider(aws.NewCredentialsCache(credentialsProvider)),
 	)
 	if err != nil {
 		return nil, err
