@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/gardener/aws-custom-route-controller/pkg/updater"
 	"github.com/go-logr/logr"
 	"go.uber.org/atomic"
 	corev1 "k8s.io/api/core/v1"
@@ -21,6 +20,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	"github.com/gardener/aws-custom-route-controller/pkg/updater"
 )
 
 // NodeReconciler watches Nodes for pod CIDRs to update route table(s)
@@ -90,7 +91,7 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 				r.nodeRoutes.SetChanged()
 			}
 			if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
-				err := updateFunc(routes)
+				err := updateFunc(ctx, routes)
 				if err != nil {
 					log.Error(err, "updating routes failed")
 					lastFailure = time.Now()

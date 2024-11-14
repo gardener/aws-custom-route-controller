@@ -7,13 +7,15 @@
 package updater
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
 	"sync"
 
-	"github.com/gardener/aws-custom-route-controller/pkg/util"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/gardener/aws-custom-route-controller/pkg/util"
 )
 
 // NodeRoute stores node internal IP and the pod CIDRs
@@ -44,7 +46,7 @@ func (r NodeRoute) Equals(other *NodeRoute) bool {
 	return r == *other
 }
 
-type NodeRoutesUpdater func(routes []NodeRoute) error
+type NodeRoutesUpdater func(ctx context.Context, routes []NodeRoute) error
 
 type NamedNodeRoutes struct {
 	sync.Mutex
