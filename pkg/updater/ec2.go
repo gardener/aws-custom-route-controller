@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"k8s.io/utils/ptr"
 )
 
 // TagNameKubernetesClusterPrefix is the tag name we use to differentiate multiple
@@ -74,8 +73,8 @@ func hasClusterTag(clusterID string, tags []ec2types.Tag) bool {
 
 func getNameTagValue(tags []ec2types.Tag) string {
 	for _, tag := range tags {
-		if ptr.Deref(tag.Key, "") == "Name" {
-			return ptr.Deref(tag.Value, "")
+		if aws.ToString(tag.Key) == "Name" {
+			return aws.ToString(tag.Value)
 		}
 	}
 	return ""
