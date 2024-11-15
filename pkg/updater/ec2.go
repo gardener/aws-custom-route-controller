@@ -8,6 +8,7 @@ package updater
 
 import (
 	"context"
+	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v2config "github.com/aws/aws-sdk-go-v2/config"
@@ -40,14 +41,17 @@ type EC2Routes interface {
 
 func NewAWSEC2Routes(creds *Credentials, region string) (EC2Routes, error) {
 	var credentialsProvider aws.CredentialsProvider
-	if creds.AccessKey != nil {
+	switch {
+	case creds.AccessKey != nil:
 		credentialsProvider = credentials.NewStaticCredentialsProvider(creds.AccessKey.ID, creds.AccessKey.Secret, "")
-	} else {
+	case creds.WorkloadIdentity != nil:
 		credentialsProvider = stscreds.NewWebIdentityRoleProvider(
 			sts.NewFromConfig(aws.Config{Region: region}),
 			creds.WorkloadIdentity.RoleARN,
 			creds.WorkloadIdentity.TokenRetriever,
 		)
+	default:
+		return nil, errors.New("credentials should either contain access key or workload identity config")
 	}
 
 	cfg, err := v2config.LoadDefaultConfig(
