@@ -28,8 +28,12 @@ Usage of ./aws-custom-route-controller:
       --tick-period duration            tick period for checking for updates (default 5s)
 ```
 
-The AWS credentials are loaded from a secret using the control plane kubeconfig. The secret needs to provide the data keys `accessKeyID` and `secretAccessKey`.
-The AWS access key must have permissions to describe route tables of the cluster and to create and delete routes.
+The AWS credentials are loaded from a secret using the control plane kubeconfig.
+The secret needs to provide one of the following combinations:
+ - the data keys `accessKeyID` and `secretAccessKey`
+ - the data keys `roleARN` and `workloadIdentityTokenFile`
+
+The AWS credentials must have permissions to describe route tables of the cluster and to create and delete routes.
 
 ## What is it good for?
 
