@@ -21,6 +21,9 @@ aws-custom-route-controller:
           'inject-commit-hash'
       publish:
         oci-builder: docker-buildx
+        platforms:
+        - linux/amd64
+        - linux/arm64
         dockerimages:
           aws-custom-route-controller:
             inputs:
