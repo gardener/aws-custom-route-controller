@@ -6,6 +6,12 @@ updates:
     schedule:
       interval: daily
     open-pull-requests-limit: 5
+    ignore:
+      # Ignore updates for the following AWS dependencies as they are implicitly updated by "github.com/aws/aws-sdk-go-v2/config"
+      - dependency-name: "github.com/aws/aws-sdk-go-v2"
+      - dependency-name: "github.com/aws/aws-sdk-go-v2/credentials"
+      - dependency-name: "github.com/aws/aws-sdk-go-v2/service/sts"
+
   # Create PRs for golang version updates
   - package-ecosystem: docker
     directory: /
