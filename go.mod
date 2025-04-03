@@ -2,6 +2,8 @@ module github.com/gardener/aws-custom-route-controller
 
 go 1.23.0
 
+toolchain go1.24.1
+
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.1
 	github.com/aws/aws-sdk-go-v2/config v1.29.6
@@ -11,7 +13,7 @@ require (
 	github.com/go-logr/logr v1.4.2
 	github.com/golang/mock v1.6.0
 	github.com/onsi/ginkgo/v2 v2.23.3
-	github.com/onsi/gomega v1.36.3
+	github.com/onsi/gomega v1.37.0
 	github.com/spf13/pflag v1.0.6
 	go.uber.org/atomic v1.11.0
 	go.uber.org/multierr v1.11.0
