@@ -1,10 +1,28 @@
+version: "2"
 run:
   concurrency: 4
-  deadline: 10m
-
 linters:
   disable:
     - unused
-linters-settings:
-  goimports:
-    local-prefixes: github.com/gardener/aws-custom-route-controller
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/gardener/aws-custom-route-controller
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
