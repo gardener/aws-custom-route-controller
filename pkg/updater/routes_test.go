@@ -125,7 +125,7 @@ var _ = Describe("CustomRoutes", func() {
 
 	It("should report error if no route tables found", func() {
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{}, nil)
-		err := customRoutes.Update(ctx, nil)
+		err := customRoutes.Update(ctx, nil, func() {})
 		Expect(err).NotTo(BeNil())
 	})
 
@@ -150,13 +150,13 @@ var _ = Describe("CustomRoutes", func() {
 			InstanceId:           aws.String(nodeRoutes[1].InstanceID),
 			RouteTableId:         rt2,
 		})
-		err := customRoutes.Update(ctx, nodeRoutes)
+		err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).To(BeNil())
 	})
 
 	It("should update nothing if unchanged", func() {
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tables2}, nil)
-		err := customRoutes.Update(ctx, nodeRoutes)
+		err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).To(BeNil())
 	})
 
