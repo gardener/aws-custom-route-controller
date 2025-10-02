@@ -91,7 +91,7 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 				r.nodeRoutes.SetChanged()
 			}
 			if routes := r.nodeRoutes.GetRoutesIfChanged(); routes != nil {
-				err := updateFunc(ctx, routes)
+				err := updateFunc(ctx, routes, func() { r.lastTick.Store(time.Now()) })
 				if err != nil {
 					log.Error(err, "updating routes failed")
 					lastFailure = time.Now()
@@ -170,6 +170,14 @@ func (r *NodeReconciler) ReadyChecker(_ *http.Request) error {
 }
 
 func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
+	err := r.healthzChecker()
+	if err != nil {
+		r.log.Error(err, "healthz check failed: %s", err.Error())
+	}
+	return err
+}
+
+func (r *NodeReconciler) healthzChecker() error {
 	if !r.initialiseFinished.Load() {
 		if !r.initialiseStarted.Load() {
 			select {
@@ -182,7 +190,7 @@ func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
 		}
 		return fmt.Errorf("initialise not finished")
 	}
-	if r.lastTick.Load().Add(3 * r.tickPeriod).Before(time.Now()) {
+	if r.lastTick.Load().Add(5 * r.tickPeriod).Before(time.Now()) {
 		return fmt.Errorf("missing tick")
 	}
 	return nil
