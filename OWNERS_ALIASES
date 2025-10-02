@@ -1,0 +1,17 @@
+# See the OWNERS docs at https://go.k8s.io/owners
+
+aliases:
+  aws-custom-route-controller-reviewers:
+  - axel7born
+  - DockToFuture
+  - domdom82
+  - kon-angelo
+  - MartinWeindel
+  - ScheererJ
+  aws-custom-route-controller-approvers:
+  - axel7born
+  - DockToFuture
+  - domdom82
+  - kon-angelo
+  - MartinWeindel
+  - ScheererJ
