@@ -172,7 +172,7 @@ func (r *NodeReconciler) ReadyChecker(_ *http.Request) error {
 func (r *NodeReconciler) HealthzChecker(_ *http.Request) error {
 	err := r.healthzChecker()
 	if err != nil {
-		r.log.Error(err, "healthz check failed: %s", err.Error())
+		r.log.Error(err, "healthz check failed")
 	}
 	return err
 }
