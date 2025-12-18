@@ -17,7 +17,7 @@ ARG TARGETARCH
 RUN make release GOARCH=$TARGETARCH
 
 ############# aws-custom-route-controller
-FROM gcr.io/distroless/static-debian12:nonroot AS aws-custom-route-controller
+FROM gcr.io/distroless/static-debian13:nonroot AS aws-custom-route-controller
 
 COPY --from=builder /build/aws-custom-route-controller /aws-custom-route-controller
 ENTRYPOINT ["/aws-custom-route-controller"]
