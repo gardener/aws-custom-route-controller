@@ -93,7 +93,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	reconciler := controller.NewNodeReconciler(mgr.GetClient(), log, mgr.Elected(), mgr.GetEventRecorderFor(componentName))
+	reconciler := controller.NewNodeReconciler(mgr.GetClient(), log, mgr.Elected(), mgr.GetEventRecorder(componentName))
 	err = builder.
 		ControllerManagedBy(mgr).
 		For(&corev1.Node{}).

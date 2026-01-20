@@ -17,7 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -37,7 +37,7 @@ type NodeReconciler struct {
 	lastTick           atomic.Time
 	tickPeriod         time.Duration
 
-	recorder    record.EventRecorder
+	recorder    events.EventRecorder
 	lastEventOk bool
 }
 
@@ -46,7 +46,7 @@ func NewNodeReconciler(
 	client client.Client,
 	log logr.Logger,
 	elected <-chan struct{},
-	recorder record.EventRecorder,
+	recorder events.EventRecorder,
 ) *NodeReconciler {
 	return &NodeReconciler{
 		client:     client,
@@ -130,13 +130,13 @@ func (r *NodeReconciler) reportEventIfNeeded(err error) {
 		Name:       "aws-custom-route-controller",
 	}
 	if isOk {
-		r.recorder.Event(ref, corev1.EventTypeNormal, "RoutesUpToDate", "routes for all route tables are up-to-date")
+		r.recorder.Eventf(ref, nil, corev1.EventTypeNormal, "RoutesUpToDate", "Reconciling", "routes for all route tables are up-to-date")
 	} else {
 		msg := err.Error()
 		if len(msg) > 300 {
 			msg = msg[:300] + "..."
 		}
-		r.recorder.Event(ref, corev1.EventTypeWarning, "RoutesUpdateFailed", msg)
+		r.recorder.Eventf(ref, nil, corev1.EventTypeWarning, "RoutesUpdateFailed", "Reconciling", msg)
 	}
 	r.lastEventOk = isOk
 }
