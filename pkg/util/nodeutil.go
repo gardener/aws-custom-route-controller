@@ -35,7 +35,7 @@ func GetNodeCondition(status *corev1.NodeStatus, conditionType corev1.NodeCondit
 func SetNodeCondition(c client.Client, nodeName types.NodeName, condition corev1.NodeCondition) error {
 	ctx := context.Background()
 
-	// Get the current node
+	// Get the current node - this will be refetched in each retry attempt
 	node := &corev1.Node{}
 	if err := c.Get(ctx, types.NamespacedName{Name: string(nodeName)}, node); err != nil {
 		return err
@@ -46,6 +46,15 @@ func SetNodeCondition(c client.Client, nodeName types.NodeName, condition corev1
 
 	// Update or add the condition
 	_, oldCondition := GetNodeCondition(&node.Status, condition.Type)
+
+	// Check if the condition is already set to avoid unnecessary updates
+	if oldCondition != nil &&
+		oldCondition.Status == condition.Status &&
+		oldCondition.Reason == condition.Reason &&
+		oldCondition.Message == condition.Message {
+		// Condition already matches, no update needed
+		return nil
+	}
 
 	if oldCondition == nil {
 		// Condition doesn't exist, add it

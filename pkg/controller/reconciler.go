@@ -31,9 +31,10 @@ import (
 var (
 	// updateNetworkConditionBackoff is the backoff for updating node condition
 	updateNetworkConditionBackoff = wait.Backoff{
-		Steps:    5,
-		Duration: 100 * time.Millisecond,
-		Jitter:   1.0,
+		Steps:    10,
+		Duration: 200 * time.Millisecond,
+		Factor:   1.5,
+		Jitter:   0.1,
 	}
 )
 
