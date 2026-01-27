@@ -18,6 +18,13 @@ import (
 	"go.uber.org/multierr"
 )
 
+// RouteUpdateResult tracks the result of updating routes for each node
+type RouteUpdateResult struct {
+	SuccessfulRoutes map[string]bool // maps pod CIDR to success status
+	HasErrors        bool
+	Error            error
+}
+
 // CustomRoutes updates route tables for an AWS cluster
 type CustomRoutes struct {
 	log         logr.Logger
@@ -68,16 +75,31 @@ func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTab
 }
 
 // Update updates all found route tables (tagged with the clusterName) with the podCIDR to node instance routes
-func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) error {
+// Returns a RouteUpdateResult that tracks which routes were successfully created
+func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error) {
+	result := &RouteUpdateResult{
+		SuccessfulRoutes: make(map[string]bool),
+		HasErrors:        false,
+	}
+
+	// Initially mark all routes as not successful
+	for _, route := range routes {
+		result.SuccessfulRoutes[route.PodCIDR] = false
+	}
+
 	tick()
 	tables, err := r.findRouteTables(ctx)
 	if err != nil {
-		return err
+		result.HasErrors = true
+		result.Error = err
+		return result, err
 	}
+
 	var updateErrors error
 	for _, table := range tables {
 		tick()
 		toBeCreated, toBeDeleted := r.calcRouteChanges(table, routes)
+
 		for _, del := range toBeDeleted {
 			req := &ec2.DeleteRouteInput{
 				RouteTableId:         table.RouteTableId,
@@ -87,10 +109,12 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 			_, err = r.ec2.DeleteRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
+				result.HasErrors = true
 				continue
 			}
 			r.log.Info("route deleted", "table", *table.RouteTableId, "destination", del.destinationCidrBlock, "instanceId", del.instanceId)
 		}
+
 		for _, create := range toBeCreated {
 			req := &ec2.CreateRouteInput{
 				DestinationCidrBlock: aws.String(create.destinationCidrBlock),
@@ -101,15 +125,39 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 			_, err = r.ec2.CreateRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
+				result.HasErrors = true
+				result.SuccessfulRoutes[create.destinationCidrBlock] = false
 				continue
 			}
+			result.SuccessfulRoutes[create.destinationCidrBlock] = true
 			r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId)
 		}
+
+		// Mark routes that already exist (not in toBeCreated) as successful
+		for _, route := range routes {
+			foundInToBeCreated := false
+			for _, create := range toBeCreated {
+				if create.destinationCidrBlock == route.PodCIDR {
+					foundInToBeCreated = true
+					break
+				}
+			}
+			if !foundInToBeCreated {
+				// Route already exists, mark as successful
+				result.SuccessfulRoutes[route.PodCIDR] = true
+			}
+		}
+
 		if len(toBeDeleted) == 0 && len(toBeCreated) == 0 {
 			r.log.Info("no routes updated", "table", *table.RouteTableId)
 		}
 	}
-	return updateErrors
+
+	if updateErrors != nil {
+		result.Error = updateErrors
+	}
+
+	return result, updateErrors
 }
 
 func (r *CustomRoutes) isMainTable(table ec2types.RouteTable) bool {
