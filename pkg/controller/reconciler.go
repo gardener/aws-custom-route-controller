@@ -243,16 +243,16 @@ func (r *NodeReconciler) removeNodeRoute(nodeName string) {
 }
 
 // updateNetworkingCondition updates the NetworkUnavailable condition for a node based on route creation status
-func (r *NodeReconciler) updateNetworkingCondition(node *corev1.Node, routesCreated bool) error {
+func (r *NodeReconciler) updateNetworkingCondition(ctx context.Context, node *corev1.Node, routesCreated bool) error {
 	_, condition := util.GetNodeCondition(&node.Status, corev1.NodeNetworkUnavailable)
 
 	if routesCreated && condition != nil && condition.Status == corev1.ConditionFalse && condition.Reason == "RouteCreated" {
-		klog.V(2).Infof("set node %v with NodeNetworkUnavailable=false was canceled because it is already set", node.Name)
+		r.log.Info("set node %v with NodeNetworkUnavailable=false was canceled because it is already set", node.Name)
 		return nil
 	}
 
 	if !routesCreated && condition != nil && condition.Status == corev1.ConditionTrue && condition.Reason == "NoRouteCreated" {
-		klog.V(2).Infof("set node %v with NodeNetworkUnavailable=true was canceled because it is already set", node.Name)
+		r.log.Info("set node %v with NodeNetworkUnavailable=true was canceled because it is already set", node.Name)
 		return nil
 	}
 
@@ -266,7 +266,7 @@ func (r *NodeReconciler) updateNetworkingCondition(node *corev1.Node, routesCrea
 		// patch in the retry loop.
 		currentTime := metav1.Now()
 		if routesCreated {
-			err = util.SetNodeCondition(r.client, types.NodeName(node.Name), corev1.NodeCondition{
+			err = util.SetNodeCondition(ctx, r.client, types.NodeName(node.Name), corev1.NodeCondition{
 				Type:               corev1.NodeNetworkUnavailable,
 				Status:             corev1.ConditionFalse,
 				Reason:             "RouteCreated",
@@ -274,7 +274,7 @@ func (r *NodeReconciler) updateNetworkingCondition(node *corev1.Node, routesCrea
 				LastTransitionTime: currentTime,
 			})
 		} else {
-			err = util.SetNodeCondition(r.client, types.NodeName(node.Name), corev1.NodeCondition{
+			err = util.SetNodeCondition(ctx, r.client, types.NodeName(node.Name), corev1.NodeCondition{
 				Type:               corev1.NodeNetworkUnavailable,
 				Status:             corev1.ConditionTrue,
 				Reason:             "NoRouteCreated",
@@ -318,7 +318,7 @@ func (r *NodeReconciler) updateNodeConditions(ctx context.Context, routes []upda
 	for _, route := range routes {
 		if node, ok := podCIDRToNode[route.PodCIDR]; ok {
 			routeSuccess := result.SuccessfulRoutes[route.PodCIDR]
-			if err := r.updateNetworkingCondition(node, routeSuccess); err != nil {
+			if err := r.updateNetworkingCondition(ctx, node, routeSuccess); err != nil {
 				r.log.Error(err, "failed to update node condition", "node", node.Name, "podCIDR", route.PodCIDR)
 			}
 		}

@@ -21,8 +21,6 @@ import (
 // RouteUpdateResult tracks the result of updating routes for each node
 type RouteUpdateResult struct {
 	SuccessfulRoutes map[string]bool // maps pod CIDR to success status
-	HasErrors        bool
-	Error            error
 }
 
 // CustomRoutes updates route tables for an AWS cluster
@@ -79,7 +77,6 @@ func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTab
 func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error) {
 	result := &RouteUpdateResult{
 		SuccessfulRoutes: make(map[string]bool),
-		HasErrors:        false,
 	}
 
 	// Initially mark all routes as not successful
@@ -90,8 +87,6 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 	tick()
 	tables, err := r.findRouteTables(ctx)
 	if err != nil {
-		result.HasErrors = true
-		result.Error = err
 		return result, err
 	}
 
@@ -109,7 +104,6 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 			_, err = r.ec2.DeleteRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
-				result.HasErrors = true
 				continue
 			}
 			r.log.Info("route deleted", "table", *table.RouteTableId, "destination", del.destinationCidrBlock, "instanceId", del.instanceId)
@@ -125,7 +119,6 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 			_, err = r.ec2.CreateRoute(ctx, req)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
-				result.HasErrors = true
 				result.SuccessfulRoutes[create.destinationCidrBlock] = false
 				continue
 			}
@@ -151,10 +144,6 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 		if len(toBeDeleted) == 0 && len(toBeCreated) == 0 {
 			r.log.Info("no routes updated", "table", *table.RouteTableId)
 		}
-	}
-
-	if updateErrors != nil {
-		result.Error = updateErrors
 	}
 
 	return result, updateErrors

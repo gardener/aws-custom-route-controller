@@ -32,8 +32,7 @@ func GetNodeCondition(status *corev1.NodeStatus, conditionType corev1.NodeCondit
 }
 
 // SetNodeCondition updates the node with the provided condition
-func SetNodeCondition(c client.Client, nodeName types.NodeName, condition corev1.NodeCondition) error {
-	ctx := context.Background()
+func SetNodeCondition(ctx context.Context, c client.Client, nodeName types.NodeName, condition corev1.NodeCondition) error {
 
 	// Get the current node - this will be refetched in each retry attempt
 	node := &corev1.Node{}
