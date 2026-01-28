@@ -125,7 +125,7 @@ var _ = Describe("CustomRoutes", func() {
 
 	It("should report error if no route tables found", func() {
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{}, nil)
-		err := customRoutes.Update(ctx, nil, func() {})
+		_, err := customRoutes.Update(ctx, nil, func() {})
 		Expect(err).NotTo(BeNil())
 	})
 
@@ -150,14 +150,20 @@ var _ = Describe("CustomRoutes", func() {
 			InstanceId:           aws.String(nodeRoutes[1].InstanceID),
 			RouteTableId:         rt2,
 		})
-		err := customRoutes.Update(ctx, nodeRoutes, func() {})
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes[nodeRoutes[0].PodCIDR]).To(BeTrue())
+		Expect(result.SuccessfulRoutes[nodeRoutes[1].PodCIDR]).To(BeTrue())
 	})
 
 	It("should update nothing if unchanged", func() {
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tables2}, nil)
-		err := customRoutes.Update(ctx, nodeRoutes, func() {})
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes[nodeRoutes[0].PodCIDR]).To(BeTrue())
+		Expect(result.SuccessfulRoutes[nodeRoutes[1].PodCIDR]).To(BeTrue())
 	})
 
 })

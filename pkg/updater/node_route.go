@@ -46,7 +46,7 @@ func (r NodeRoute) Equals(other *NodeRoute) bool {
 	return r == *other
 }
 
-type NodeRoutesUpdater func(ctx context.Context, routes []NodeRoute, tick func()) error
+type NodeRoutesUpdater func(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error)
 
 type NamedNodeRoutes struct {
 	sync.Mutex
