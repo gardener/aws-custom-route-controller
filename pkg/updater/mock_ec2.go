@@ -75,6 +75,26 @@ func (mr *MockEC2RoutesMockRecorder) DeleteRoute(arg0, arg1 interface{}, arg2 ..
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteRoute", reflect.TypeOf((*MockEC2Routes)(nil).DeleteRoute), varargs...)
 }
 
+// DescribeInstances mocks base method.
+func (m *MockEC2Routes) DescribeInstances(arg0 context.Context, arg1 *ec2.DescribeInstancesInput, arg2 ...func(*ec2.Options)) (*ec2.DescribeInstancesOutput, error) {
+	m.ctrl.T.Helper()
+	varargs := []interface{}{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "DescribeInstances", varargs...)
+	ret0, _ := ret[0].(*ec2.DescribeInstancesOutput)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DescribeInstances indicates an expected call of DescribeInstances.
+func (mr *MockEC2RoutesMockRecorder) DescribeInstances(arg0, arg1 interface{}, arg2 ...interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]interface{}{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DescribeInstances", reflect.TypeOf((*MockEC2Routes)(nil).DescribeInstances), varargs...)
+}
+
 // DescribeRouteTables mocks base method.
 func (m *MockEC2Routes) DescribeRouteTables(arg0 context.Context, arg1 *ec2.DescribeRouteTablesInput, arg2 ...func(*ec2.Options)) (*ec2.DescribeRouteTablesOutput, error) {
 	m.ctrl.T.Helper()
