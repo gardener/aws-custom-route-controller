@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -72,6 +73,45 @@ func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTab
 	return tables, nil
 }
 
+func (r *CustomRoutes) getNetworkInterfaces(ctx context.Context, instanceID string) ([]string, error) {
+	request := &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	}
+	response, err := r.ec2.DescribeInstances(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Reservations) == 0 || len(response.Reservations[0].Instances) == 0 {
+		return nil, fmt.Errorf("instance %s not found", instanceID)
+	}
+
+	instance := response.Reservations[0].Instances[0]
+
+	// Sort network interfaces by device index so primary ENI (device 0) is first
+	enis := instance.NetworkInterfaces
+	sort.Slice(enis, func(i, j int) bool {
+		di := int32(0)
+		dj := int32(0)
+		if enis[i].Attachment != nil && enis[i].Attachment.DeviceIndex != nil {
+			di = *enis[i].Attachment.DeviceIndex
+		}
+		if enis[j].Attachment != nil && enis[j].Attachment.DeviceIndex != nil {
+			dj = *enis[j].Attachment.DeviceIndex
+		}
+		return di < dj
+	})
+
+	var networkInterfaceIds []string
+	for _, eni := range enis {
+		if eni.NetworkInterfaceId != nil {
+			networkInterfaceIds = append(networkInterfaceIds, *eni.NetworkInterfaceId)
+		}
+	}
+
+	return networkInterfaceIds, nil
+}
+
 // Update updates all found route tables (tagged with the clusterName) with the podCIDR to node instance routes
 // Returns a RouteUpdateResult that tracks which routes were successfully created
 func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error) {
@@ -110,20 +150,52 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 		}
 
 		for _, create := range toBeCreated {
-			req := &ec2.CreateRouteInput{
-				DestinationCidrBlock: aws.String(create.destinationCidrBlock),
-				InstanceId:           aws.String(create.instanceId),
-				RouteTableId:         table.RouteTableId,
-			}
-			tick()
-			_, err = r.ec2.CreateRoute(ctx, req)
+			networkInterfaceIds, err := r.getNetworkInterfaces(ctx, create.instanceId)
 			if err != nil {
-				updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
+				updateErrors = multierr.Append(updateErrors, fmt.Errorf("getting network interfaces for instance %s failed: %w", create.instanceId, err))
 				result.SuccessfulRoutes[create.destinationCidrBlock] = false
 				continue
 			}
-			result.SuccessfulRoutes[create.destinationCidrBlock] = true
-			r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId)
+
+			// Multi-NIC instances: AWS rejects InstanceId in CreateRoute, must use NetworkInterfaceId.
+			// Try each ENI (sorted by device index), first success wins.
+			if len(networkInterfaceIds) > 1 {
+				routeCreated := false
+				for _, eniId := range networkInterfaceIds {
+					req := &ec2.CreateRouteInput{
+						DestinationCidrBlock: aws.String(create.destinationCidrBlock),
+						NetworkInterfaceId:   aws.String(eniId),
+						RouteTableId:         table.RouteTableId,
+					}
+					tick()
+					_, err = r.ec2.CreateRoute(ctx, req)
+					if err == nil {
+						r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId, "networkInterfaceId", eniId)
+						routeCreated = true
+						break
+					}
+				}
+				if !routeCreated {
+					updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed on all ENIs", create.destinationCidrBlock, create.instanceId, *table.RouteTableId))
+				}
+				result.SuccessfulRoutes[create.destinationCidrBlock] = routeCreated
+			} else {
+				// Single NIC: use InstanceId as before
+				req := &ec2.CreateRouteInput{
+					DestinationCidrBlock: aws.String(create.destinationCidrBlock),
+					InstanceId:           aws.String(create.instanceId),
+					RouteTableId:         table.RouteTableId,
+				}
+				tick()
+				_, err = r.ec2.CreateRoute(ctx, req)
+				if err != nil {
+					updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
+					result.SuccessfulRoutes[create.destinationCidrBlock] = false
+					continue
+				}
+				result.SuccessfulRoutes[create.destinationCidrBlock] = true
+				r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId)
+			}
 		}
 
 		// Mark routes that already exist (not in toBeCreated) as successful

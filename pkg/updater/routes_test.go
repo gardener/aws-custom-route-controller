@@ -135,16 +135,67 @@ var _ = Describe("CustomRoutes", func() {
 			DestinationCidrBlock: routeNode2.DestinationCidrBlock,
 			RouteTableId:         rt1,
 		})
+		// Mock DescribeInstances for node3 on rt1
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{nodeRoutes[1].InstanceID},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String(nodeRoutes[1].InstanceID),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-node3")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
 		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
 			DestinationCidrBlock: aws.String(nodeRoutes[1].PodCIDR),
 			InstanceId:           aws.String(nodeRoutes[1].InstanceID),
 			RouteTableId:         rt1,
 		})
+		// Mock DescribeInstances for node1 on rt2
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{nodeRoutes[0].InstanceID},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String(nodeRoutes[0].InstanceID),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-node1")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
 		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
 			DestinationCidrBlock: aws.String(nodeRoutes[0].PodCIDR),
 			InstanceId:           aws.String(nodeRoutes[0].InstanceID),
 			RouteTableId:         rt2,
 		})
+		// Mock DescribeInstances for node3 on rt2
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{nodeRoutes[1].InstanceID},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String(nodeRoutes[1].InstanceID),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-node3")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
 		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
 			DestinationCidrBlock: aws.String(nodeRoutes[1].PodCIDR),
 			InstanceId:           aws.String(nodeRoutes[1].InstanceID),
