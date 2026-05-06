@@ -20,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/events"
-	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -247,16 +246,16 @@ func (r *NodeReconciler) updateNetworkingCondition(ctx context.Context, node *co
 	_, condition := util.GetNodeCondition(&node.Status, corev1.NodeNetworkUnavailable)
 
 	if routesCreated && condition != nil && condition.Status == corev1.ConditionFalse && condition.Reason == "RouteCreated" {
-		r.log.Info("set node %v with NodeNetworkUnavailable=false was canceled because it is already set", node.Name)
+		r.log.Info("set node with NodeNetworkUnavailable=false was canceled because it is already set", "node", node.Name)
 		return nil
 	}
 
 	if !routesCreated && condition != nil && condition.Status == corev1.ConditionTrue && condition.Reason == "NoRouteCreated" {
-		r.log.Info("set node %v with NodeNetworkUnavailable=true was canceled because it is already set", node.Name)
+		r.log.Info("set node with NodeNetworkUnavailable=true was canceled because it is already set", "node", node.Name)
 		return nil
 	}
 
-	klog.Infof("Patching node status %v with %v previous condition was:%+v", node.Name, routesCreated, condition)
+	r.log.Info("patching node status", "node", node.Name, "routesCreated", routesCreated, "previousCondition", fmt.Sprintf("%+v", condition))
 
 	// either condition is not there, or has a value != to what we need
 	// start setting it
@@ -283,14 +282,14 @@ func (r *NodeReconciler) updateNetworkingCondition(ctx context.Context, node *co
 			})
 		}
 		if err != nil {
-			klog.V(4).Infof("Error updating node %s, retrying: %v", types.NodeName(node.Name), err)
+			r.log.V(4).Info("error updating node condition, retrying", "node", node.Name, "error", err.Error())
 			return false, nil
 		}
 		return true, nil
 	})
 
 	if err != nil {
-		klog.Errorf("Error updating node %s: %v", node.Name, err)
+		r.log.Error(err, "updating node failed", "node", node.Name)
 	}
 
 	return err
