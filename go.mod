@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.5
 	github.com/go-logr/logr v1.4.4
 	github.com/golang/mock v1.6.0
-	github.com/onsi/ginkgo/v2 v2.32.0
+	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/spf13/pflag v1.0.10
 	go.uber.org/atomic v1.11.0
