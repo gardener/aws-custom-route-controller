@@ -6,7 +6,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.43.8
 	github.com/aws/aws-sdk-go-v2/config v1.32.39
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.38
-	github.com/aws/aws-sdk-go-v2/service/ec2 v1.322.0
+	github.com/aws/aws-sdk-go-v2/service/ec2 v1.323.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.8
 	github.com/go-logr/logr v1.4.4
 	github.com/golang/mock v1.6.0
