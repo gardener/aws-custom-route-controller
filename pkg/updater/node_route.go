@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/gardener/aws-custom-route-controller/pkg/util"
@@ -29,14 +30,16 @@ func NewNodeRoute(instanceID, podCIDR string) *NodeRoute {
 		return nil
 	}
 
-	nodeRoute := &NodeRoute{
-		InstanceID: instanceID,
-		PodCIDR:    podCIDR,
-	}
-	if _, _, err := net.ParseCIDR(podCIDR); err != nil {
+	_, ipNet, err := net.ParseCIDR(podCIDR)
+	if err != nil {
 		return nil
 	}
-	return nodeRoute
+	// Store the canonical network form; AWS reports routes canonically, so a raw spec string
+	// with host bits would never match and would churn delete/recreate each sync.
+	return &NodeRoute{
+		InstanceID: instanceID,
+		PodCIDR:    ipNet.String(),
+	}
 }
 
 func (r NodeRoute) Equals(other *NodeRoute) bool {
@@ -50,12 +53,14 @@ type NodeRoutesUpdater func(ctx context.Context, routes []NodeRoute, tick func()
 
 type NamedNodeRoutes struct {
 	sync.Mutex
+	log     logr.Logger
 	routes  map[string]NodeRoute
 	changed bool
 }
 
-func NewNamedNodeRoutes() *NamedNodeRoutes {
+func NewNamedNodeRoutes(log logr.Logger) *NamedNodeRoutes {
 	return &NamedNodeRoutes{
+		log:    log,
 		routes: map[string]NodeRoute{},
 	}
 }
@@ -68,6 +73,18 @@ func (r *NamedNodeRoutes) AddNodeRoute(node *corev1.Node) (*NodeRoute, bool) {
 
 	r.Lock()
 	defer r.Unlock()
+
+	// Refuse a pod CIDR already owned by a different node: without this, a node could claim
+	// another node's CIDR and win its route during a window where the victim's route is
+	// absent. First writer keeps the CIDR; a later conflicting claim is dropped.
+	for name, existing := range r.routes {
+		if name != node.Name && existing.PodCIDR == route.PodCIDR {
+			r.log.Info("ignoring node route: pod CIDR already claimed by another node",
+				"node", node.Name, "podCIDR", route.PodCIDR, "instanceID", route.InstanceID,
+				"owningNode", name, "owningInstanceID", existing.InstanceID)
+			return nil, false
+		}
+	}
 
 	changed := false
 	if !r.routes[node.Name].Equals(route) {

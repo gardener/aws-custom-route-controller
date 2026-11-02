@@ -65,7 +65,7 @@ func NewNodeReconciler(
 		client:     client,
 		log:        log.WithName("controller").WithName("node"),
 		elected:    elected,
-		nodeRoutes: updater.NewNamedNodeRoutes(),
+		nodeRoutes: updater.NewNamedNodeRoutes(log.WithName("controller").WithName("node").WithName("routes")),
 		recorder:   recorder,
 	}
 }
