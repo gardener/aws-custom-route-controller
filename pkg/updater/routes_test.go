@@ -267,4 +267,73 @@ var _ = Describe("CustomRoutes", func() {
 		Expect(result.SuccessfulRoutes["10.243.3.0/24"]).To(BeFalse())
 	})
 
+	It("should never create a route for a node pod CIDR outside the configured pod network", func() {
+		// A shoot-writable Node spec must not be able to make the seed-credentialed
+		// controller write an out-of-network route (e.g. shadowing the default route or
+		// a co-tenant node subnet). Such destinations also lie outside the delete-side
+		// containment filter, so the planted route would otherwise be permanent.
+		maliciousRoutes := []updater.NodeRoute{
+			{InstanceID: "i-attacker", PodCIDR: "0.0.0.0/1"},     // shadow default route
+			{InstanceID: "i-attacker", PodCIDR: "10.250.0.0/17"}, // co-tenant node subnet
+			{InstanceID: "i-attacker", PodCIDR: "10.243.0.0/8"},  // base inside pod net, prefix too wide
+		}
+		emptyTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: emptyTables}, nil)
+		// No DescribeInstances / CreateRoute calls are expected: gomock fails the test
+		// if any of the malicious routes reach the AWS create path.
+		result, err := customRoutes.Update(ctx, maliciousRoutes, func() {})
+		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		for _, mr := range maliciousRoutes {
+			Expect(result.SuccessfulRoutes[mr.PodCIDR]).To(BeFalse())
+		}
+	})
+
+	It("should still create legitimate in-network routes when mixed with out-of-network ones", func() {
+		mixedRoutes := []updater.NodeRoute{
+			{InstanceID: "i-legit", PodCIDR: "10.243.3.0/24"}, // in pod network -> created
+			{InstanceID: "i-attacker", PodCIDR: "0.0.0.0/1"},  // out of network -> skipped
+		}
+		emptyTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: emptyTables}, nil)
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{"i-legit"},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String("i-legit"),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-legit")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
+		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
+			DestinationCidrBlock: aws.String("10.243.3.0/24"),
+			InstanceId:           aws.String("i-legit"),
+			RouteTableId:         rt1,
+		})
+		result, err := customRoutes.Update(ctx, mixedRoutes, func() {})
+		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes["10.243.3.0/24"]).To(BeTrue())
+		Expect(result.SuccessfulRoutes["0.0.0.0/1"]).To(BeFalse())
+	})
+
 })

@@ -271,6 +271,13 @@ outer:
 		if found[i] {
 			continue
 		}
+		if !r.podNetworkContains(nr.PodCIDR) {
+			// Node-supplied destinations outside the pod network must never be written: they
+			// also escape the delete-side filter, so such a route could never be removed.
+			r.log.Info("skipping route creation: node pod CIDR outside configured pod network",
+				"podCIDR", nr.PodCIDR, "instanceId", nr.InstanceID, "podNetwork", r.podNetwork.String())
+			continue
+		}
 		route := internalNodeRoute{
 			destinationCidrBlock: nr.PodCIDR,
 			instanceId:           nr.InstanceID,
@@ -279,4 +286,24 @@ outer:
 	}
 
 	return
+}
+
+// podNetworkContains reports whether cidr is fully within the configured pod network: its
+// network address must be inside podNetwork and its prefix no wider, so a CIDR whose base
+// passes but whose range spills out is rejected.
+func (r *CustomRoutes) podNetworkContains(cidr string) bool {
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	if !r.podNetwork.Contains(ipnet.IP) {
+		return false
+	}
+	nodeOnes, nodeBits := ipnet.Mask.Size()
+	podOnes, podBits := r.podNetwork.Mask.Size()
+	if nodeBits != podBits {
+		// Different address families.
+		return false
+	}
+	return nodeOnes >= podOnes
 }
