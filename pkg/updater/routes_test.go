@@ -124,10 +124,14 @@ var _ = Describe("CustomRoutes", func() {
 		ctrl.Finish()
 	})
 
-	It("should report error if no route tables found", func() {
+	It("should report error and a nil result if no route tables found", func() {
+		// A discovery failure happens before any per-route work, so there are no per-route
+		// outcomes. Update must return a nil result so the reconciler does not patch
+		// NetworkUnavailable=true onto every node from a transient failure.
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{}, nil)
-		_, err := customRoutes.Update(ctx, nil, func() {})
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).NotTo(BeNil())
+		Expect(result).To(BeNil())
 	})
 
 	It("should update route tables", func() {

@@ -115,14 +115,16 @@ func (r *CustomRoutes) getNetworkInterfaces(ctx context.Context, instanceID stri
 // Update updates all found route tables (tagged with the clusterName) with the podCIDR to node instance routes
 // Returns a RouteUpdateResult that tracks which routes were successfully created
 func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error) {
-	result := &RouteUpdateResult{
-		SuccessfulRoutes: make(map[string]bool),
-	}
-
 	tick()
 	tables, err := r.findRouteTables(ctx)
 	if err != nil {
-		return result, err
+		// No route work was attempted, so report no per-route outcomes: a fabricated
+		// all-false result would mark every node NetworkUnavailable on a transient failure.
+		return nil, err
+	}
+
+	result := &RouteUpdateResult{
+		SuccessfulRoutes: make(map[string]bool),
 	}
 
 	// A route is successful only if present in every managed table, so outcomes are
