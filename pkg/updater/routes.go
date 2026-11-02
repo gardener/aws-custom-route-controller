@@ -54,6 +54,9 @@ type internalNodeRoute struct {
 func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTable, error) {
 	var tables []ec2types.RouteTable
 
+	// TODO: discovery adopts any table carrying a known ownership tag value, which a
+	// same-account actor can write. Intersect with route-table IDs / VPC supplied by the
+	// provider once available.
 	request := &ec2.DescribeRouteTablesInput{}
 	response, err := r.ec2.DescribeRouteTables(ctx, request)
 	if err != nil {
@@ -238,6 +241,9 @@ func (r *CustomRoutes) deleteRoutes(ctx context.Context, table ec2types.RouteTab
 }
 
 func (r *CustomRoutes) isMainTable(table ec2types.RouteTable) bool {
+	// TODO: the main table is identified only by its Name tag, which a same-account actor
+	// can write to flip a worker table to delete-only handling. Use a provider-supplied
+	// main-table ID once available.
 	return getNameTagValue(table.Tags) == r.clusterName
 }
 

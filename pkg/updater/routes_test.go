@@ -29,7 +29,7 @@ var _ = Describe("CustomRoutes", func() {
 		clusterName   = "shoot--foo--bar"
 		clusterTag    = ec2types.Tag{
 			Key:   aws.String(updater.ClusterTagKey(clusterName)),
-			Value: aws.String("1"),
+			Value: aws.String("owned"),
 		}
 		route1 = ec2types.Route{
 			DestinationCidrBlock: aws.String("0.0.0.0/0"),
@@ -132,6 +132,51 @@ var _ = Describe("CustomRoutes", func() {
 		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).NotTo(BeNil())
 		Expect(result).To(BeNil())
+	})
+
+	It("should not adopt a route table whose cluster tag value is not a known ownership value", func() {
+		// A co-tenant holding only ec2:CreateTags must not be able to enrol an arbitrary
+		// route table into this controller's management by tagging it with the cluster key
+		// and an arbitrary value. Only the known provider-aws ownership values are accepted,
+		// so a table tagged with an unknown value is ignored and discovery finds no tables.
+		foreignTag := ec2types.Tag{
+			Key:   aws.String(updater.ClusterTagKey(clusterName)),
+			Value: aws.String("attacker-controlled"),
+		}
+		foreignTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{foreignTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: foreignTables}, nil)
+		// No DescribeInstances / CreateRoute / DeleteRoute calls are expected.
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
+		Expect(err).NotTo(BeNil())
+		Expect(result).To(BeNil())
+	})
+
+	It("should adopt route tables tagged with any known ownership value (owned, shared, legacy 1)", func() {
+		// provider-aws tags owned resources "owned" (or legacy "1") and bring-your-own-VPC
+		// resources "shared"; all three must keep the table under management so BYO and
+		// legacy shoots are not regressed.
+		for _, value := range []string{"owned", "shared", "1"} {
+			tagged := []ec2types.RouteTable{
+				{
+					RouteTableId: rt1,
+					Tags: []ec2types.Tag{{
+						Key:   aws.String(updater.ClusterTagKey(clusterName)),
+						Value: aws.String(value),
+					}},
+					Routes: []ec2types.Route{route1}, // only the gateway route, nothing to change
+				},
+			}
+			ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tagged}, nil)
+			result, err := customRoutes.Update(ctx, nil, func() {})
+			Expect(err).To(BeNil(), "value %q should be adopted", value)
+			Expect(result).NotTo(BeNil())
+		}
 	})
 
 	It("should update route tables", func() {

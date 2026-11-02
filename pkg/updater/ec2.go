@@ -71,6 +71,15 @@ func ClusterTagKey(clusterID string) string {
 	return TagNameKubernetesClusterPrefix + clusterID
 }
 
+// clusterOwnershipTagValues are the accepted values for the cluster tag: "owned" and
+// legacy "1" for owned resources, "shared" for bring-your-own-VPC resources. Accepting
+// only this set prevents adopting a table tagged with an arbitrary value.
+var clusterOwnershipTagValues = map[string]struct{}{
+	"owned":  {},
+	"shared": {},
+	"1":      {},
+}
+
 func hasClusterTag(clusterID string, tags []ec2types.Tag) bool {
 	clusterTagKey := ClusterTagKey(clusterID)
 	for _, tag := range tags {
@@ -83,7 +92,9 @@ func hasClusterTag(clusterID string, tags []ec2types.Tag) bool {
 			return true
 		}
 		if *tag.Key == clusterTagKey {
-			return true
+			if _, ok := clusterOwnershipTagValues[*tag.Value]; ok {
+				return true
+			}
 		}
 	}
 	return false
