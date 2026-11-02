@@ -6,6 +6,7 @@ package updater_test
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -215,6 +216,55 @@ var _ = Describe("CustomRoutes", func() {
 		Expect(result).NotTo(BeNil())
 		Expect(result.SuccessfulRoutes[nodeRoutes[0].PodCIDR]).To(BeTrue())
 		Expect(result.SuccessfulRoutes[nodeRoutes[1].PodCIDR]).To(BeTrue())
+	})
+
+	It("should report a route as unsuccessful if it fails in any table, even when a later table already has it", func() {
+		// A node is network-available only if its route is present in EVERY managed table.
+		// Here the route creation fails in the first table but the route already exists in a
+		// second table; the per-table outcomes must be combined with a logical AND so the
+		// later success does not mask the earlier failure and wrongly mark the node schedulable.
+		singleNode := []updater.NodeRoute{
+			{InstanceID: "i-node1", PodCIDR: "10.243.3.0/24"},
+		}
+		twoTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1}, // route missing here -> must be created
+			},
+			{
+				RouteTableId: rt2,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1, routeNode1}, // already present here
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: twoTables}, nil)
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{"i-node1"},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String("i-node1"),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-node1")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
+		// Route creation in rt1 fails.
+		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
+			DestinationCidrBlock: aws.String("10.243.3.0/24"),
+			InstanceId:           aws.String("i-node1"),
+			RouteTableId:         rt1,
+		}).Return(nil, fmt.Errorf("RouteLimitExceeded"))
+		result, err := customRoutes.Update(ctx, singleNode, func() {})
+		Expect(err).NotTo(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes["10.243.3.0/24"]).To(BeFalse())
 	})
 
 })
