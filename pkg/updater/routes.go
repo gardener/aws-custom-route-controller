@@ -54,6 +54,9 @@ type internalNodeRoute struct {
 func (r *CustomRoutes) findRouteTables(ctx context.Context) ([]ec2types.RouteTable, error) {
 	var tables []ec2types.RouteTable
 
+	// TODO: discovery adopts any table carrying a known ownership tag value, which a
+	// same-account actor can write. Intersect with route-table IDs / VPC supplied by the
+	// provider once available.
 	request := &ec2.DescribeRouteTablesInput{}
 	response, err := r.ec2.DescribeRouteTables(ctx, request)
 	if err != nil {
@@ -115,45 +118,53 @@ func (r *CustomRoutes) getNetworkInterfaces(ctx context.Context, instanceID stri
 // Update updates all found route tables (tagged with the clusterName) with the podCIDR to node instance routes
 // Returns a RouteUpdateResult that tracks which routes were successfully created
 func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func()) (*RouteUpdateResult, error) {
+	tick()
+	tables, err := r.findRouteTables(ctx)
+	if err != nil {
+		// No route work was attempted, so report no per-route outcomes: a fabricated
+		// all-false result would mark every node NetworkUnavailable on a transient failure.
+		return nil, err
+	}
+
 	result := &RouteUpdateResult{
 		SuccessfulRoutes: make(map[string]bool),
 	}
 
-	// Initially mark all routes as not successful
+	// A route is successful only if present in every managed table, so outcomes are
+	// AND-reduced across tables: start optimistic and let any table flip a CIDR to false.
 	for _, route := range routes {
-		result.SuccessfulRoutes[route.PodCIDR] = false
-	}
-
-	tick()
-	tables, err := r.findRouteTables(ctx)
-	if err != nil {
-		return result, err
+		result.SuccessfulRoutes[route.PodCIDR] = true
 	}
 
 	var updateErrors error
 	for _, table := range tables {
 		tick()
-		toBeCreated, toBeDeleted := r.calcRouteChanges(table, routes)
+		toBeCreated, toBeDeleted, alreadyPresent := r.calcRouteChanges(table, routes)
 
-		for _, del := range toBeDeleted {
-			req := &ec2.DeleteRouteInput{
-				RouteTableId:         table.RouteTableId,
-				DestinationCidrBlock: aws.String(del.destinationCidrBlock),
+		// The main table carries no node pod routes, so it has no say in reachability; skip
+		// its vote but still run its deletions.
+		if r.isMainTable(table) {
+			if len(toBeDeleted) == 0 && len(toBeCreated) == 0 {
+				r.log.Info("no routes updated", "table", *table.RouteTableId)
 			}
-			tick()
-			_, err = r.ec2.DeleteRoute(ctx, req)
-			if err != nil {
-				updateErrors = multierr.Append(updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
-				continue
-			}
-			r.log.Info("route deleted", "table", *table.RouteTableId, "destination", del.destinationCidrBlock, "instanceId", del.instanceId)
+			r.deleteRoutes(ctx, table, toBeDeleted, tick, &updateErrors)
+			continue
+		}
+
+		r.deleteRoutes(ctx, table, toBeDeleted, tick, &updateErrors)
+
+		// Seed with routes already present in this table (an explicit result from
+		// calcRouteChanges, not inferred from absence in toBeCreated).
+		tableSuccess := make(map[string]bool, len(routes))
+		for _, cidr := range alreadyPresent {
+			tableSuccess[cidr] = true
 		}
 
 		for _, create := range toBeCreated {
 			networkInterfaceIds, err := r.getNetworkInterfaces(ctx, create.instanceId)
 			if err != nil {
 				updateErrors = multierr.Append(updateErrors, fmt.Errorf("getting network interfaces for instance %s failed: %w", create.instanceId, err))
-				result.SuccessfulRoutes[create.destinationCidrBlock] = false
+				tableSuccess[create.destinationCidrBlock] = false
 				continue
 			}
 
@@ -178,7 +189,7 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 				if !routeCreated {
 					updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed on all ENIs", create.destinationCidrBlock, create.instanceId, *table.RouteTableId))
 				}
-				result.SuccessfulRoutes[create.destinationCidrBlock] = routeCreated
+				tableSuccess[create.destinationCidrBlock] = routeCreated
 			} else {
 				// Single NIC: use InstanceId as before
 				req := &ec2.CreateRouteInput{
@@ -190,26 +201,19 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 				_, err = r.ec2.CreateRoute(ctx, req)
 				if err != nil {
 					updateErrors = multierr.Append(updateErrors, fmt.Errorf("creating route %s -> %s in table %s failed: %w", create.destinationCidrBlock, create.instanceId, *table.RouteTableId, err))
-					result.SuccessfulRoutes[create.destinationCidrBlock] = false
+					tableSuccess[create.destinationCidrBlock] = false
 					continue
 				}
-				result.SuccessfulRoutes[create.destinationCidrBlock] = true
+				tableSuccess[create.destinationCidrBlock] = true
 				r.log.Info("route created", "table", *table.RouteTableId, "destination", create.destinationCidrBlock, "instanceId", create.instanceId)
 			}
 		}
 
-		// Mark routes that already exist (not in toBeCreated) as successful
+		// AND this table's outcome into the running result: a CIDR not carried by this table
+		// makes the node not network-available.
 		for _, route := range routes {
-			foundInToBeCreated := false
-			for _, create := range toBeCreated {
-				if create.destinationCidrBlock == route.PodCIDR {
-					foundInToBeCreated = true
-					break
-				}
-			}
-			if !foundInToBeCreated {
-				// Route already exists, mark as successful
-				result.SuccessfulRoutes[route.PodCIDR] = true
+			if !tableSuccess[route.PodCIDR] {
+				result.SuccessfulRoutes[route.PodCIDR] = false
 			}
 		}
 
@@ -221,11 +225,29 @@ func (r *CustomRoutes) Update(ctx context.Context, routes []NodeRoute, tick func
 	return result, updateErrors
 }
 
+func (r *CustomRoutes) deleteRoutes(ctx context.Context, table ec2types.RouteTable, toBeDeleted []internalNodeRoute, tick func(), updateErrors *error) {
+	for _, del := range toBeDeleted {
+		req := &ec2.DeleteRouteInput{
+			RouteTableId:         table.RouteTableId,
+			DestinationCidrBlock: aws.String(del.destinationCidrBlock),
+		}
+		tick()
+		if _, err := r.ec2.DeleteRoute(ctx, req); err != nil {
+			*updateErrors = multierr.Append(*updateErrors, fmt.Errorf("deleting route %s in table %s failed: %w", del.destinationCidrBlock, *table.RouteTableId, err))
+			continue
+		}
+		r.log.Info("route deleted", "table", *table.RouteTableId, "destination", del.destinationCidrBlock, "instanceId", del.instanceId)
+	}
+}
+
 func (r *CustomRoutes) isMainTable(table ec2types.RouteTable) bool {
+	// TODO: the main table is identified only by its Name tag, which a same-account actor
+	// can write to flip a worker table to delete-only handling. Use a provider-supplied
+	// main-table ID once available.
 	return getNameTagValue(table.Tags) == r.clusterName
 }
 
-func (r *CustomRoutes) calcRouteChanges(table ec2types.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute) {
+func (r *CustomRoutes) calcRouteChanges(table ec2types.RouteTable, nodeRoutes []NodeRoute) (toBeCreated, toBeDeleted []internalNodeRoute, alreadyPresent []string) {
 	if r.isMainTable(table) {
 		nodeRoutes = nil
 	}
@@ -244,6 +266,7 @@ outer:
 		for i, nr := range nodeRoutes {
 			if nr.PodCIDR == *route.DestinationCidrBlock && route.InstanceId != nil && nr.InstanceID == *route.InstanceId {
 				found[i] = true
+				alreadyPresent = append(alreadyPresent, nr.PodCIDR)
 				continue outer
 			}
 		}
@@ -256,6 +279,13 @@ outer:
 		if found[i] {
 			continue
 		}
+		if !r.podNetworkContains(nr.PodCIDR) {
+			// Node-supplied destinations outside the pod network must never be written: they
+			// also escape the delete-side filter, so such a route could never be removed.
+			r.log.Info("skipping route creation: node pod CIDR outside configured pod network",
+				"podCIDR", nr.PodCIDR, "instanceId", nr.InstanceID, "podNetwork", r.podNetwork.String())
+			continue
+		}
 		route := internalNodeRoute{
 			destinationCidrBlock: nr.PodCIDR,
 			instanceId:           nr.InstanceID,
@@ -264,4 +294,24 @@ outer:
 	}
 
 	return
+}
+
+// podNetworkContains reports whether cidr is fully within the configured pod network: its
+// network address must be inside podNetwork and its prefix no wider, so a CIDR whose base
+// passes but whose range spills out is rejected.
+func (r *CustomRoutes) podNetworkContains(cidr string) bool {
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return false
+	}
+	if !r.podNetwork.Contains(ipnet.IP) {
+		return false
+	}
+	nodeOnes, nodeBits := ipnet.Mask.Size()
+	podOnes, podBits := r.podNetwork.Mask.Size()
+	if nodeBits != podBits {
+		// Different address families.
+		return false
+	}
+	return nodeOnes >= podOnes
 }

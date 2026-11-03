@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var _ = Describe("NamedNodeRoutes", func() {
@@ -48,7 +49,7 @@ var _ = Describe("NamedNodeRoutes", func() {
 	)
 
 	It("should extract node data", func() {
-		routes := updater.NewNamedNodeRoutes()
+		routes := updater.NewNamedNodeRoutes(logf.Log.WithName("test"))
 		route1, changed1 := routes.AddNodeRoute(node1)
 		Expect(route1).To(Equal(updater.NewNodeRoute(node1InstanceID, podCIDRs1[0])))
 		Expect(changed1).To(BeTrue())
@@ -82,6 +83,68 @@ var _ = Describe("NamedNodeRoutes", func() {
 
 		routes2 := routes.GetRoutesIfChanged()
 		Expect(len(routes2)).To(Equal(1))
+	})
+
+	It("should store the pod CIDR in canonical network form", func() {
+		// A node spec may carry host bits in the pod CIDR; AWS reports routes in canonical
+		// form, so the stored value must be canonicalized or it would never match the
+		// existing route and would churn delete/recreate every sync.
+		route := updater.NewNodeRoute("i-0001", "10.0.1.7/24")
+		Expect(route).NotTo(BeNil())
+		Expect(route.PodCIDR).To(Equal("10.0.1.0/24"))
+	})
+
+	It("should refuse a pod CIDR already claimed by another node and keep the first owner", func() {
+		// Without arbitration a re-registering node could claim another node's pod CIDR and
+		// win the AWS route. The first node to claim a CIDR keeps it; a later conflicting
+		// claim from a different node is dropped.
+		routes := updater.NewNamedNodeRoutes(logf.Log.WithName("test"))
+		victim := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "victim"},
+			Spec: corev1.NodeSpec{
+				PodCIDRs:   []string{"10.0.5.0/24"},
+				ProviderID: makeProviderID("i-victim"),
+			},
+		}
+		attacker := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "attacker"},
+			Spec: corev1.NodeSpec{
+				PodCIDRs:   []string{"10.0.5.0/24"}, // same CIDR, different instance
+				ProviderID: makeProviderID("i-attacker"),
+			},
+		}
+
+		victimRoute, victimChanged := routes.AddNodeRoute(victim)
+		Expect(victimRoute).NotTo(BeNil())
+		Expect(victimChanged).To(BeTrue())
+
+		attackerRoute, attackerChanged := routes.AddNodeRoute(attacker)
+		Expect(attackerRoute).To(BeNil())
+		Expect(attackerChanged).To(BeFalse())
+
+		stored := routes.GetRoutesIfChanged()
+		Expect(len(stored)).To(Equal(1))
+		Expect(stored[0].InstanceID).To(Equal("i-victim"))
+		Expect(stored[0].PodCIDR).To(Equal("10.0.5.0/24"))
+	})
+
+	It("should allow the same node to keep updating its own CIDR", func() {
+		// The conflict check is keyed on a DIFFERENT node name owning the CIDR, so a node
+		// re-reporting its own CIDR is not treated as a conflict.
+		routes := updater.NewNamedNodeRoutes(logf.Log.WithName("test"))
+		node := &corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "node"},
+			Spec: corev1.NodeSpec{
+				PodCIDRs:   []string{"10.0.8.0/24"},
+				ProviderID: makeProviderID("i-node"),
+			},
+		}
+		route1, changed1 := routes.AddNodeRoute(node)
+		Expect(route1).NotTo(BeNil())
+		Expect(changed1).To(BeTrue())
+		route2, changed2 := routes.AddNodeRoute(node)
+		Expect(route2).NotTo(BeNil())
+		Expect(changed2).To(BeFalse())
 	})
 })
 

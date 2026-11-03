@@ -6,6 +6,7 @@ package updater_test
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -28,7 +29,7 @@ var _ = Describe("CustomRoutes", func() {
 		clusterName   = "shoot--foo--bar"
 		clusterTag    = ec2types.Tag{
 			Key:   aws.String(updater.ClusterTagKey(clusterName)),
-			Value: aws.String("1"),
+			Value: aws.String("owned"),
 		}
 		route1 = ec2types.Route{
 			DestinationCidrBlock: aws.String("0.0.0.0/0"),
@@ -123,10 +124,59 @@ var _ = Describe("CustomRoutes", func() {
 		ctrl.Finish()
 	})
 
-	It("should report error if no route tables found", func() {
+	It("should report error and a nil result if no route tables found", func() {
+		// A discovery failure happens before any per-route work, so there are no per-route
+		// outcomes. Update must return a nil result so the reconciler does not patch
+		// NetworkUnavailable=true onto every node from a transient failure.
 		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{}, nil)
-		_, err := customRoutes.Update(ctx, nil, func() {})
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
 		Expect(err).NotTo(BeNil())
+		Expect(result).To(BeNil())
+	})
+
+	It("should not adopt a route table whose cluster tag value is not a known ownership value", func() {
+		// A co-tenant holding only ec2:CreateTags must not be able to enrol an arbitrary
+		// route table into this controller's management by tagging it with the cluster key
+		// and an arbitrary value. Only the known provider-aws ownership values are accepted,
+		// so a table tagged with an unknown value is ignored and discovery finds no tables.
+		foreignTag := ec2types.Tag{
+			Key:   aws.String(updater.ClusterTagKey(clusterName)),
+			Value: aws.String("attacker-controlled"),
+		}
+		foreignTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{foreignTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: foreignTables}, nil)
+		// No DescribeInstances / CreateRoute / DeleteRoute calls are expected.
+		result, err := customRoutes.Update(ctx, nodeRoutes, func() {})
+		Expect(err).NotTo(BeNil())
+		Expect(result).To(BeNil())
+	})
+
+	It("should adopt route tables tagged with any known ownership value (owned, shared, legacy 1)", func() {
+		// provider-aws tags owned resources "owned" (or legacy "1") and bring-your-own-VPC
+		// resources "shared"; all three must keep the table under management so BYO and
+		// legacy shoots are not regressed.
+		for _, value := range []string{"owned", "shared", "1"} {
+			tagged := []ec2types.RouteTable{
+				{
+					RouteTableId: rt1,
+					Tags: []ec2types.Tag{{
+						Key:   aws.String(updater.ClusterTagKey(clusterName)),
+						Value: aws.String(value),
+					}},
+					Routes: []ec2types.Route{route1}, // only the gateway route, nothing to change
+				},
+			}
+			ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: tagged}, nil)
+			result, err := customRoutes.Update(ctx, nil, func() {})
+			Expect(err).To(BeNil(), "value %q should be adopted", value)
+			Expect(result).NotTo(BeNil())
+		}
 	})
 
 	It("should update route tables", func() {
@@ -215,6 +265,124 @@ var _ = Describe("CustomRoutes", func() {
 		Expect(result).NotTo(BeNil())
 		Expect(result.SuccessfulRoutes[nodeRoutes[0].PodCIDR]).To(BeTrue())
 		Expect(result.SuccessfulRoutes[nodeRoutes[1].PodCIDR]).To(BeTrue())
+	})
+
+	It("should report a route as unsuccessful if it fails in any table, even when a later table already has it", func() {
+		// A node is network-available only if its route is present in EVERY managed table.
+		// Here the route creation fails in the first table but the route already exists in a
+		// second table; the per-table outcomes must be combined with a logical AND so the
+		// later success does not mask the earlier failure and wrongly mark the node schedulable.
+		singleNode := []updater.NodeRoute{
+			{InstanceID: "i-node1", PodCIDR: "10.243.3.0/24"},
+		}
+		twoTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1}, // route missing here -> must be created
+			},
+			{
+				RouteTableId: rt2,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1, routeNode1}, // already present here
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: twoTables}, nil)
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{"i-node1"},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String("i-node1"),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-node1")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
+		// Route creation in rt1 fails.
+		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
+			DestinationCidrBlock: aws.String("10.243.3.0/24"),
+			InstanceId:           aws.String("i-node1"),
+			RouteTableId:         rt1,
+		}).Return(nil, fmt.Errorf("RouteLimitExceeded"))
+		result, err := customRoutes.Update(ctx, singleNode, func() {})
+		Expect(err).NotTo(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes["10.243.3.0/24"]).To(BeFalse())
+	})
+
+	It("should never create a route for a node pod CIDR outside the configured pod network", func() {
+		// A shoot-writable Node spec must not be able to make the seed-credentialed
+		// controller write an out-of-network route (e.g. shadowing the default route or
+		// a co-tenant node subnet). Such destinations also lie outside the delete-side
+		// containment filter, so the planted route would otherwise be permanent.
+		maliciousRoutes := []updater.NodeRoute{
+			{InstanceID: "i-attacker", PodCIDR: "0.0.0.0/1"},     // shadow default route
+			{InstanceID: "i-attacker", PodCIDR: "10.250.0.0/17"}, // co-tenant node subnet
+			{InstanceID: "i-attacker", PodCIDR: "10.243.0.0/8"},  // base inside pod net, prefix too wide
+		}
+		emptyTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: emptyTables}, nil)
+		// No DescribeInstances / CreateRoute calls are expected: gomock fails the test
+		// if any of the malicious routes reach the AWS create path.
+		result, err := customRoutes.Update(ctx, maliciousRoutes, func() {})
+		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		for _, mr := range maliciousRoutes {
+			Expect(result.SuccessfulRoutes[mr.PodCIDR]).To(BeFalse())
+		}
+	})
+
+	It("should still create legitimate in-network routes when mixed with out-of-network ones", func() {
+		mixedRoutes := []updater.NodeRoute{
+			{InstanceID: "i-legit", PodCIDR: "10.243.3.0/24"}, // in pod network -> created
+			{InstanceID: "i-attacker", PodCIDR: "0.0.0.0/1"},  // out of network -> skipped
+		}
+		emptyTables := []ec2types.RouteTable{
+			{
+				RouteTableId: rt1,
+				Tags:         []ec2types.Tag{clusterTag},
+				Routes:       []ec2types.Route{route1},
+			},
+		}
+		ec2RoutesMock.EXPECT().DescribeRouteTables(ctx, &ec2.DescribeRouteTablesInput{}).Return(&ec2.DescribeRouteTablesOutput{RouteTables: emptyTables}, nil)
+		ec2RoutesMock.EXPECT().DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+			InstanceIds: []string{"i-legit"},
+		}).Return(&ec2.DescribeInstancesOutput{
+			Reservations: []ec2types.Reservation{
+				{
+					Instances: []ec2types.Instance{
+						{
+							InstanceId: aws.String("i-legit"),
+							NetworkInterfaces: []ec2types.InstanceNetworkInterface{
+								{NetworkInterfaceId: aws.String("eni-legit")},
+							},
+						},
+					},
+				},
+			},
+		}, nil)
+		ec2RoutesMock.EXPECT().CreateRoute(ctx, &ec2.CreateRouteInput{
+			DestinationCidrBlock: aws.String("10.243.3.0/24"),
+			InstanceId:           aws.String("i-legit"),
+			RouteTableId:         rt1,
+		})
+		result, err := customRoutes.Update(ctx, mixedRoutes, func() {})
+		Expect(err).To(BeNil())
+		Expect(result).NotTo(BeNil())
+		Expect(result.SuccessfulRoutes["10.243.3.0/24"]).To(BeTrue())
+		Expect(result.SuccessfulRoutes["0.0.0.0/1"]).To(BeFalse())
 	})
 
 })

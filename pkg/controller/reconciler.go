@@ -65,7 +65,7 @@ func NewNodeReconciler(
 		client:     client,
 		log:        log.WithName("controller").WithName("node"),
 		elected:    elected,
-		nodeRoutes: updater.NewNamedNodeRoutes(),
+		nodeRoutes: updater.NewNamedNodeRoutes(log.WithName("controller").WithName("node").WithName("routes")),
 		recorder:   recorder,
 	}
 }
@@ -121,7 +121,8 @@ func (r *NodeReconciler) StartUpdater(ctx context.Context, updateFunc updater.No
 				}
 				r.reportEventIfNeeded(err)
 
-				// Update node conditions based on route creation results
+				// A nil result means no route was attempted (e.g. discovery failed): skip the
+				// condition update rather than marking every node NetworkUnavailable.
 				if result != nil {
 					r.updateNodeConditions(ctx, routes, result)
 				}
