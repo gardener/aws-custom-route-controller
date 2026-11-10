@@ -1,6 +1,10 @@
 name: Build
 on:
+  # Only pushes to the default branch publish credentialed snapshot artifacts; other
+  # branches are validated through pull_request without publish credentials.
   push:
+    branches:
+      - main
   pull_request:
 
 jobs:
@@ -20,4 +24,7 @@ jobs:
       - build
     permissions:
       id-token: write
+      # contents: write is required by the upstream draft-release job (only runs on
+      # push to the default branch). The branch restriction above is what prevents
+      # arbitrary-branch pushes from reaching the credentialed publish path.
       contents: write
