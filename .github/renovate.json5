@@ -13,12 +13,18 @@
   "pinDigests": true,
   "packageRules": [
     {
+      // Only patch/digest bumps of the golang base image and toolchain automerge;
+      // minor/major fall through to review.
       "matchDatasources": ["docker", "go-version"],
       "matchPackagePatterns": ["golang"],
+      "matchUpdateTypes": ["patch", "digest"],
       "automerge": true
     },
     {
+      // Only patch/digest Go module bumps automerge; minor/major of (direct) deps
+      // require human review before they execute in CI.
       "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["patch", "digest"],
       "automerge": true
     },
     {
