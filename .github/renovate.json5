@@ -8,6 +8,9 @@
   "labels": ["kind/enhancement"],
   "postUpdateOptions": ["gomodTidy"],
   "separateMinorPatch": true,
+  // Pin and maintain image/action digests so build inputs cannot be swapped under a
+  // mutable tag.
+  "pinDigests": true,
   "packageRules": [
     {
       "matchDatasources": ["docker", "go-version"],
