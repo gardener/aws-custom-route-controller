@@ -1,49 +1,61 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "dependencyDashboard": true,
-  "extends": [
-    "config:recommended",
-    "github>gardener/ci-infra//config/renovate/automerge-with-tide.json5"
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  dependencyDashboard: true,
+  extends: [
+    'config:recommended',
+    'github>gardener/ci-infra//config/renovate/automerge-with-tide.json5',
   ],
-  "labels": ["kind/enhancement"],
-  "postUpdateOptions": ["gomodTidy"],
-  "separateMinorPatch": true,
-  // Pin and maintain image/action digests so build inputs cannot be swapped under a
-  // mutable tag.
-  "pinDigests": true,
-  "packageRules": [
+  labels: [
+    'kind/enhancement',
+  ],
+  postUpdateOptions: [
+    'gomodTidy',
+  ],
+  separateMinorPatch: true,
+  pinDigests: true,
+  packageRules: [
     {
-      // Only patch/digest bumps of the golang base image and toolchain automerge;
-      // minor/major fall through to review.
-      "matchDatasources": ["docker", "go-version"],
-      "matchPackagePatterns": ["golang"],
-      "matchUpdateTypes": ["patch", "digest"],
-      "automerge": true
-    },
-    {
-      // Only patch/digest Go module bumps automerge; minor/major of (direct) deps
-      // require human review before they execute in CI.
-      "matchManagers": ["gomod"],
-      "matchUpdateTypes": ["patch", "digest"],
-      "automerge": true
-    },
-    {
-      "matchManagers": ["github-actions"],
-      "matchPackagePatterns": [
-        "^actions/checkout$",
-        "^actions/setup-go$",
+      matchDatasources: [
+        'docker',
+        'go-version',
       ],
-      "automerge": true
+      matchUpdateTypes: [
+        'patch',
+        'digest',
+      ],
+      automerge: true,
+      matchPackageNames: [
+        '/golang/',
+      ],
     },
     {
-      // Ignore paths which most likely create false positives.
-      "matchFileNames": [
-        "chart/**",
-        "cmd/**",
-        "pkg/**",
-        "test/**",
+      matchManagers: [
+        'gomod',
       ],
-      "enabled": false
-    }
-  ]
+      matchUpdateTypes: [
+        'patch',
+        'digest',
+      ],
+      automerge: true,
+    },
+    {
+      matchManagers: [
+        'github-actions',
+      ],
+      automerge: true,
+      matchPackageNames: [
+        '/^actions/checkout$/',
+        '/^actions/setup-go$/',
+      ],
+    },
+    {
+      matchFileNames: [
+        'chart/**',
+        'cmd/**',
+        'pkg/**',
+        'test/**',
+      ],
+      enabled: false,
+    },
+  ],
 }
