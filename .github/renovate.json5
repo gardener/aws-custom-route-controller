@@ -33,6 +33,7 @@
         'gomod',
       ],
       matchUpdateTypes: [
+        'minor',
         'patch',
         'digest',
       ],
